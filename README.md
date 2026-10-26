@@ -1,5 +1,7 @@
 # Lilotech
 
+**Version 1.1.0**
+
 A Chrome extension that saves what you read for research:
 
 - the **APA 7 reference** (with italics, ready to paste into Word or Google Docs)
@@ -9,14 +11,68 @@ A Chrome extension that saves what you read for research:
 
 Everything is kept in your own Chrome on your computer. Nothing is uploaded anywhere. The only outside services used are Crossref and DataCite (both free), to look up the reference details from a paper's DOI. PDFs are read on your computer, not uploaded.
 
-## Install it on your Mac (about 2 minutes)
+## Versions
 
-1. Double-click `Lilotech.zip` in your Downloads folder. A folder called `lilotech` appears.
-2. Move that `lilotech` folder somewhere it can stay, like your Documents folder. (Chrome loads it from there, so don't delete it later.)
-3. Open Chrome, type `chrome://extensions` in the address bar, and press Return.
-4. Turn on **Developer mode** (the switch in the top-right corner).
-5. Click **Load unpacked** (top-left), choose the `lilotech` folder, and click **Select**.
-6. Click the puzzle-piece icon in Chrome's toolbar and click the pin next to **Lilotech**, so its blue book icon is always visible.
+| Version | What's new |
+|---|---|
+| **1.1.0** (current) | Save PDFs, both ones open in Chrome and ones on your computer (**Add a PDF**) |
+| **1.0.0** | First release: APA 7 references, abstracts, conclusions, highlights, library and exports |
+
+Full details are in [CHANGELOG.md](CHANGELOG.md). Each version is tagged in Git (`v1.0.0`, `v1.1.0`).
+
+## Get the code
+
+Pick **one** of these three ways.
+
+### Option A: Clone with Git (recommended, easy to update)
+
+1. Open **Terminal** (press Command+Space, type `Terminal`, press Return).
+2. Copy these two lines, paste them in, and press Return:
+   ```bash
+   cd ~/Documents
+   git clone https://github.com/Bujjinga/lilotech.git
+   ```
+   You now have a `lilotech` folder in your Documents folder.
+   - If your Mac asks to install "command line developer tools", click **Install**, wait, then run the lines again.
+   - If the repository is private, Git asks you to sign in. Use your GitHub username and a [personal access token](https://github.com/settings/tokens) as the password. Option B avoids this.
+3. To get a specific version instead of the newest:
+   ```bash
+   cd ~/Documents/lilotech
+   git checkout v1.0.0     # the first version
+   git checkout main       # back to the newest
+   ```
+
+### Option B: GitHub Desktop (no Terminal)
+
+1. Install [GitHub Desktop](https://desktop.github.com) and sign in.
+2. Choose **File → Clone Repository**, pick `Bujjinga/lilotech`, set the folder to Documents, and click **Clone**.
+
+### Option C: Download a zip
+
+On the repository page, click the green **Code** button, then **Download ZIP**. Double-click the zip in Downloads, rename the folder to `lilotech`, and move it to Documents.
+
+## Add it to Chrome
+
+1. Open Chrome, type `chrome://extensions` in the address bar, and press Return.
+2. Turn on **Developer mode** (the switch in the top-right corner).
+3. Click **Load unpacked** (top-left), choose the `lilotech` folder in Documents, and click **Select**.
+4. Click the puzzle-piece icon in Chrome's toolbar and click the pin next to **Lilotech**, so its blue book icon is always visible.
+
+Keep the `lilotech` folder where it is. Chrome loads the extension from it, so if you delete or move the folder, Lilotech stops working.
+
+## Update to a new version
+
+1. Get the new files:
+   - **Option A:** in Terminal, run:
+     ```bash
+     cd ~/Documents/lilotech
+     git pull
+     ```
+   - **Option B:** in GitHub Desktop, click **Fetch origin**, then **Pull origin**.
+   - **Option C:** download the zip again and replace the old folder.
+2. Go to `chrome://extensions` and click the circular reload arrow on the Lilotech card.
+
+Your saved library is kept. It lives inside Chrome, not in the folder.
 
 ## Use it
 
@@ -48,7 +104,6 @@ Click **My library** in the popup (or right-click the Lilotech icon and pick **O
 - PDFs work best when they print a DOI on the first page, as most journal PDFs do. Without one, Lilotech searches Crossref by the title and only uses a result whose title clearly matches. Scanned PDFs (pictures of pages, with no selectable text) can't be read.
 - For a PDF on your Mac opened in Chrome (a `file://` address), use **Add a PDF** in the library instead.
 - APA 7 wants article titles in sentence case ("Attention is all you need"). Lilotech keeps the title as the publisher wrote it, so check capitalisation before you submit. Click **Edit** in the library to change any reference.
-- After you update the extension files, go to `chrome://extensions` and click the circular reload arrow on Lilotech.
 
 ## How it's built
 
