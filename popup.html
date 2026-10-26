@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lilotech</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { width: 440px; padding: 14px 16px 16px; }
+    header { display: flex; align-items: center; margin-bottom: 10px; }
+    #status { margin: 30px 0; text-align: center; }
+    #form[hidden], #status[hidden] { display: none; }
+    .title { font-weight: 650; font-size: 15px; margin: 4px 0 8px; }
+    .badge { font-size: 11px; background: var(--soft); color: var(--accent); padding: 1px 7px; border-radius: 99px; font-weight: 600; }
+    textarea { min-height: 80px; max-height: 200px; }
+    footer { margin-top: 14px; }
+    .saved { color: var(--ok); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><img src="icons/icon48.png" alt="">Lilotech</div>
+    <span class="spacer"></span>
+    <button id="openLib" title="See everything you've saved">My library</button>
+  </header>
+
+  <div id="status" class="muted">Reading this page…</div>
+
+  <div id="form" hidden>
+    <div class="row"><span id="kind" class="badge"></span><span id="already" class="small muted"></span></div>
+    <div class="title" id="title"></div>
+
+    <label>APA 7 reference</label>
+    <div class="apa" id="apa"></div>
+    <div class="row" style="margin-top:6px">
+      <button id="copyApa">Copy reference</button>
+      <span class="small muted" id="inText"></span>
+    </div>
+
+    <label for="abstract">Abstract <span class="hint" id="absSrc"></span></label>
+    <textarea id="abstract" placeholder="No abstract found. Paste it here, or highlight it on the page, right-click, and choose “Save highlight as the Abstract”."></textarea>
+
+    <label for="conclusion">Conclusion</label>
+    <textarea id="conclusion" placeholder="No conclusion found. Paste it here, or highlight it on the page, right-click, and choose “Save highlight as the Conclusion”."></textarea>
+
+    <div id="snipWrap" hidden>
+      <label for="snippet">Your highlight</label>
+      <textarea id="snippet"></textarea>
+    </div>
+
+    <label for="note">My note <span class="hint">(optional)</span></label>
+    <textarea id="note" placeholder="Why this matters for your research…" style="min-height:50px"></textarea>
+
+    <footer class="row">
+      <button id="save" class="primary">Save to library</button>
+      <span id="savedMsg" class="saved"></span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
