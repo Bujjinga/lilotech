@@ -27,6 +27,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
   try {
     const data = await capture(tab);
+    if (data.pdf) {
+      // PDFs are read in the popup, which has the PDF reader.
+      chrome.action.openPopup().catch(() => flash(tab.id, 'PDF', '#3d5afe'));
+      return;
+    }
     const items = await getItems();
     const existing = findExisting(items, data.ref);
     const selection = (data.selection || info.selectionText || '').trim();

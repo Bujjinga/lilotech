@@ -1,4 +1,5 @@
-import { getItems, setItems, copyRich, toast, escapeHtml } from './lib.js';
+import { getItems, setItems, saveItem, copyRich, toast, escapeHtml } from './lib.js';
+import { capturePdf } from './pdfread.js';
 
 const $ = (id) => document.getElementById(id);
 let items = [];
@@ -53,7 +54,7 @@ function card(it) {
     <div class="row actions">
       <button data-act="copyRef">Copy reference</button>
       <button data-act="copyAllOne">Copy with abstract &amp; conclusion</button>
-      <button data-act="open">Open page</button>
+      ${it.ref.doi || it.ref.url ? '<button data-act="open">Open page</button>' : ''}
       <span class="spacer"></span>
       <button data-act="edit">Edit</button>
       <button data-act="del" class="danger">Delete</button>
@@ -68,7 +69,8 @@ function render() {
     $('list').innerHTML = `<div class="empty muted">
       <p><b>Your library is empty.</b></p>
       <p>Open any paper or article, then click the Lilotech icon in Chrome's toolbar and press <b>Save to library</b>.<br>
-      You can also right-click a page, or highlight text and right-click, to save it.</p></div>`;
+      You can also right-click a page, or highlight text and right-click, to save it.<br>
+      Have a PDF on your computer? Click <b>Add a PDF</b> above.</p></div>`;
     return;
   }
   $('list').innerHTML = list.length ? list.map(card).join('') : '<div class="empty muted">Nothing matches your search.</div>';
@@ -196,6 +198,29 @@ $('file').onchange = async () => {
     toast('That file is not a Lilotech backup');
   }
   $('file').value = '';
+};
+
+// ---------------------------------------------------------------- PDFs from the computer
+$('addPdf').onclick = () => $('pdfFile').click();
+$('pdfFile').onchange = async () => {
+  const files = [...$('pdfFile').files];
+  $('pdfFile').value = '';
+  let added = 0;
+  for (const f of files) {
+    toast(`Reading ${f.name}…`);
+    try {
+      const data = await capturePdf(new Uint8Array(await f.arrayBuffer()));
+      if (!data.ref.title) data.ref.title = f.name.replace(/\.pdf$/i, '');
+      data.ref.fileName = f.name;
+      await saveItem(data.ref, { abstract: data.abstract, abstractSource: data.abstractSource, conclusion: data.conclusion });
+      added++;
+    } catch (e) {
+      console.error(e);
+      toast(`Couldn't read ${f.name}`);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  if (added) toast(`Added ${added} PDF${added === 1 ? '' : 's'}. Check the reference, and click Edit to fix anything.`);
 };
 
 $('q').addEventListener('input', render);
