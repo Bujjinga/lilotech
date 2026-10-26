@@ -50,6 +50,10 @@ Click **My library** in the popup (or right-click the Lilotech icon and pick **O
 - APA 7 wants article titles in sentence case ("Attention is all you need"). Lilotech keeps the title as the publisher wrote it, so check capitalisation before you submit. Click **Edit** in the library to change any reference.
 - After you update the extension files, go to `chrome://extensions` and click the circular reload arrow on Lilotech.
 
+## How it's built
+
+See [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) for the full technical guide: architecture, how each feature works, and how to build, test and release it.
+
 ## Credits
 
 PDF reading uses [pdf.js](https://github.com/mozilla/pdf.js) by Mozilla (Apache 2.0 licence), included in `vendor/pdfjs`.
