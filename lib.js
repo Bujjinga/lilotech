@@ -75,6 +75,7 @@ export function extractPage() {
   const info = {
     url: location.href,
     pageTitle: oneLine(document.title),
+    contentType: document.contentType,
     title: meta('citation_title', 'dc.title', 'og:title', 'twitter:title') || oneLine(ld && (ld.headline || ld.name)) || oneLine(document.title),
     authors,
     date: meta('citation_publication_date', 'citation_date', 'citation_online_date', 'citation_cover_date', 'dc.date', 'prism.publicationdate', 'article:published_time', 'date', 'pubdate') || (ld && (ld.datePublished || ld.dateCreated)) || '',
@@ -187,6 +188,10 @@ export function extractPage() {
 // ---------------------------------------------------------------------------
 export async function lookupCrossref(doi) {
   if (!doi) return null;
+  return (await crossrefWork(doi)) || (await lookupDataCite(doi));
+}
+
+async function crossrefWork(doi) {
   try {
     const res = await fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}?mailto=lilotech@example.com`);
     if (!res.ok) return null;
@@ -394,11 +399,24 @@ export async function capture(tab) {
     const m = decodeURIComponent(tab.url || '').match(/\b(10\.\d{4,9}\/[^\s"'<>?#&]+?)(\.pdf)?$/i);
     page = { url: tab.url, pageTitle: tab.title, title: tab.title, authors: [], doi: m ? m[1] : '', abstract: '', conclusion: '', selection: '', limited: true };
   }
-  const cr = await lookupCrossref(page.doi);
+  // PDFs are read separately with pdf.js (see pdfread.js), which only runs in the popup or library.
+  const pdf = page.contentType === 'application/pdf' || (page.limited && /\.pdf($|[?#])/i.test(tab.url || ''));
+  if (pdf) return { pdf: true, page };
+  return finishCapture(page);
+}
+
+// Look the source up online and build the reference from the page data.
+export async function finishCapture(page) {
+  let cr = await lookupCrossref(page.doi);
+  if (!cr && !page.doi && page.title) {
+    cr = await searchCrossrefByTitle(page.title, page.authors && page.authors[0]);
+    if (cr) page.doi = cr.doi;
+  }
   const ref = buildReference(page, cr);
   let abstract = page.abstract;
   let abstractSource = page.abstractSource;
-  if (cr && cr.abstract && (!abstract || /not a formal/.test(abstractSource || ''))) {
+  // Crossref's abstract is cleaner than one pulled from PDF text.
+  if (cr && cr.abstract && (!abstract || page.isPdf || /not a formal/.test(abstractSource || ''))) {
     abstract = cr.abstract;
     abstractSource = 'Crossref';
   }
@@ -420,7 +438,12 @@ export async function setItems(items) {
 const normUrl = (u) => (u || '').replace(/#.*$/, '').replace(/\/$/, '');
 
 export function findExisting(items, ref) {
-  return items.find((it) => (ref.doi && it.ref.doi && it.ref.doi.toLowerCase() === ref.doi.toLowerCase()) || normUrl(it.ref.url) === normUrl(ref.url));
+  const title = (ref.title || '').toLowerCase();
+  return items.find((it) =>
+    (ref.doi && it.ref.doi && it.ref.doi.toLowerCase() === ref.doi.toLowerCase()) ||
+    (ref.url && normUrl(it.ref.url) === normUrl(ref.url)) ||
+    // Local PDFs have no web address, so match those by title.
+    (!ref.url && !ref.doi && !it.ref.url && title && (it.ref.title || '').toLowerCase() === title));
 }
 
 // Save or update an item. `fields` can hold abstract, conclusion, note, snippet.
@@ -466,5 +489,57 @@ export function toast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(t._h);
-  t._h = setTimeout(() => t.classList.remove('show'), 1800);
+  t._h = setTimeout(() => t.classList.remove('show'), Math.max(1800, msg.length * 45));
+}
+
+// ---------------------------------------------------------------------------
+// DataCite holds DOIs that Crossref doesn't, such as arXiv preprints and datasets.
+// ---------------------------------------------------------------------------
+async function lookupDataCite(doi) {
+  try {
+    const res = await fetch(`https://api.datacite.org/dois/${encodeURIComponent(doi)}`);
+    if (!res.ok) return null;
+    const a = (await res.json()).data.attributes;
+    const abs = (a.descriptions || []).find((d) => d.descriptionType === 'Abstract');
+    const container = a.container && a.container.title;
+    return {
+      title: ((a.titles || [])[0] || {}).title || '',
+      authors: (a.creators || []).map((c) => (c.familyName ? { family: c.familyName, given: c.givenName || '' } : { literal: c.name || '' })).filter((x) => x.family || x.literal),
+      year: a.publicationYear ? String(a.publicationYear) : '',
+      month: '',
+      day: '',
+      journal: container || '',
+      volume: '',
+      issue: '',
+      pages: '',
+      articleNumber: '',
+      publisher: typeof a.publisher === 'string' ? a.publisher : (a.publisher && a.publisher.name) || '',
+      type: /Text|Preprint|JournalArticle/i.test((a.types || {}).resourceTypeGeneral || '') ? 'posted-content' : (a.types || {}).resourceTypeGeneral || '',
+      doi: a.doi || doi,
+      abstract: abs ? abs.description.replace(/\s+/g, ' ').trim() : '',
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Find a paper on Crossref from its title, for PDFs that don't print their DOI.
+// Only accepts a result whose title clearly matches, so we never attach the wrong paper.
+export async function searchCrossrefByTitle(title, author) {
+  const words = (s) => (s || '').toLowerCase().replace(/<[^>]+>/g, ' ').match(/[a-z0-9]+/g) || [];
+  const want = words(title);
+  if (want.length < 3) return null;
+  try {
+    const q = encodeURIComponent(title + (author ? ' ' + author : ''));
+    const res = await fetch(`https://api.crossref.org/works?query.bibliographic=${q}&rows=3&select=DOI,title&mailto=lilotech@example.com`);
+    if (!res.ok) return null;
+    for (const w of (await res.json()).message.items || []) {
+      const got = words((w.title || [])[0]);
+      const a = new Set(want);
+      const b = new Set(got);
+      const shared = [...a].filter((x) => b.has(x)).length;
+      if (shared / Math.max(a.size, b.size) >= 0.85) return crossrefWork(w.DOI);
+    }
+  } catch (e) { /* offline or blocked */ }
+  return null;
 }
