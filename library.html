@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lilotech library</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+    header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+    header .brand { font-size: 20px; }
+    header .brand img { width: 28px; height: 28px; }
+    .tools { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 8px; }
+    .tools select { width: auto; }
+    .exports { margin-bottom: 18px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+    .card h3 { font-size: 15px; margin-bottom: 8px; }
+    .card .meta { margin-bottom: 8px; }
+    details { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+    summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var(--muted); }
+    .body { white-space: pre-wrap; margin: 6px 0 2px; }
+    .empty-field { color: var(--muted); font-style: italic; }
+    blockquote { margin: 6px 0; padding: 4px 10px; border-left: 3px solid var(--accent); white-space: pre-wrap; }
+    .actions { margin-top: 10px; }
+    .empty { text-align: center; padding: 50px 20px; }
+    .edit textarea { min-height: 90px; }
+    .count { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand"><img src="icons/icon128.png" alt="">Lilotech library</div>
+      <span class="count muted" id="count"></span>
+    </header>
+
+    <div class="tools">
+      <input type="search" id="q" placeholder="Search titles, authors, abstracts, notes…">
+      <select id="sort" aria-label="Sort">
+        <option value="new">Newest first</option>
+        <option value="az">A–Z (reference list order)</option>
+      </select>
+    </div>
+    <div class="row exports">
+      <button id="copyAll">Copy all references</button>
+      <button id="exWord">Download for Word</button>
+      <button id="exMd">Download notes (.md)</button>
+      <button id="exCsv">Download spreadsheet (.csv)</button>
+      <span class="spacer"></span>
+      <button id="exJson" title="Save a backup file of your whole library">Backup</button>
+      <button id="imJson" title="Load a backup file">Restore</button>
+      <input type="file" id="file" accept=".json,application/json" hidden>
+    </div>
+
+    <div id="list"></div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script type="module" src="library.js"></script>
+</body>
+</html>

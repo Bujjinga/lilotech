@@ -1,0 +1,86 @@
+:root {
+  --bg: #fbfaf7;
+  --card: #ffffff;
+  --ink: #1f2328;
+  --muted: #667085;
+  --line: #e4e2dc;
+  --accent: #3d5afe;
+  --accent-ink: #ffffff;
+  --soft: #eef1ff;
+  --ok: #2e7d32;
+  --warn: #b26a00;
+  --radius: 10px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181b;
+    --card: #212226;
+    --ink: #ecebe8;
+    --muted: #9a9ca3;
+    --line: #34363c;
+    --accent: #8c9eff;
+    --accent-ink: #10121a;
+    --soft: #2a2e45;
+    --ok: #81c784;
+    --warn: #ffb74d;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+h1, h2, h3 { margin: 0; line-height: 1.25; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; }
+.brand img { width: 22px; height: 22px; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+button, .btn {
+  font: inherit;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+button:hover, .btn:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.danger:hover { border-color: #c62828; color: #c62828; }
+button:disabled { opacity: 0.5; cursor: default; }
+label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+textarea, input[type="search"], input[type="text"], select {
+  width: 100%;
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+textarea { resize: vertical; min-height: 70px; }
+textarea:focus, input:focus, select:focus { outline: 2px solid var(--soft); border-color: var(--accent); }
+.apa {
+  background: var(--soft);
+  border-radius: var(--radius);
+  padding: 10px 12px 10px 2.2em;
+  text-indent: -1.4em; /* APA hanging indent */
+  word-break: break-word;
+}
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+.toast {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px;
+  opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10;
+}
+.toast.show { opacity: 1; }
