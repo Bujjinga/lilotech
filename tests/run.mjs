@@ -164,6 +164,7 @@ async function libraryTests(ctx, extId) {
   let counts = await nav();
   ok('library section counts', counts.all === '3' && counts.related === '2' && counts.introduction === '1' && counts.unsorted === '1' && counts.methods === '0', JSON.stringify(counts));
   ok('library logo', await page.locator('#logo svg.logo-mark').count() === 1, 'no logo');
+  ok('library cat', await page.locator('#cat svg').count() === 1, 'no cat');
 
   await page.click('#nav button[data-f="related"]');
   ok('library filter', (await page.$$('.card')).length === 2, `${(await page.$$('.card')).length} cards`);
@@ -233,6 +234,8 @@ fs.mkdirSync(pdfDir);
 fs.mkdirSync(extDir);
 testCopyOfExtension(extDir);
 
+const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+ok('opens in the side panel', manifest.side_panel && manifest.side_panel.default_path === 'popup.html' && !manifest.action.default_popup && manifest.permissions.includes('sidePanel'), JSON.stringify(manifest.action));
 await apaTests();
 await styleTests();
 const server = await serve(pdfDir);
@@ -262,6 +265,8 @@ try {
   let [sw] = ctx.serviceWorkers();
   if (!sw) sw = await ctx.waitForEvent('serviceworker');
   const extId = sw.url().split('/')[2];
+  const behavior = await sw.evaluate(() => chrome.sidePanel.getPanelBehavior());
+  ok('icon opens the side panel', behavior.openPanelOnActionClick === true, JSON.stringify(behavior));
   const lib = await ctx.newPage();
   lib.on('pageerror', (e) => failures.push(`library page error: ${e.message}`));
   await lib.goto(`chrome-extension://${extId}/library.html`);
@@ -300,7 +305,12 @@ try {
     ok(`popup ${file} conclusion`, conclusion.startsWith(exp.conclusion), `got ${show(conclusion)}`);
     if (file === 'springer.html') {
       ok('popup logo', await pop.locator('#logo svg.logo-mark').count() === 1, 'no logo');
+      ok('popup has no note box', await pop.locator('#note').count() === 0, 'My note is still there');
+      await pop.click('#cat');
+      ok('popup cat plays when clicked', await pop.locator('#cat.playing').count() === 1, 'cat is not playing');
+      await pop.waitForSelector('#cat:not(.playing)', { timeout: 6000 }).catch(() => failures.push('popup cat never stops playing'));
       await pop.selectOption('#style', 'ieee');
+      await pop.waitForFunction(() => /^\[1\]/.test(document.querySelector('#apa').textContent), null, { timeout: 5000 }).catch(() => {});
       const ieee = await pop.textContent('#apa');
       ok('popup ieee', /^\[1\] /.test(ieee) && ieee.includes('vol.'), `got ${show(ieee)}`);
       await pop.click('#sections .chip[data-sec="related"]');
@@ -314,6 +324,40 @@ try {
     }
     await pop.close();
     await art.close();
+  }
+
+  // ---- 4b. the side panel follows your tabs
+  if (!only || 'panel'.includes(only)) {
+    const a = await ctx.newPage();
+    await a.goto(`${base}/web/springer.html`);
+    const b = await ctx.newPage();
+    await b.goto(`${base}/web/wiley.html`);
+    const pop = await ctx.newPage();
+    pop.on('pageerror', (e) => failures.push(`panel error: ${e.message}`));
+    // Pretend to be the side panel: not a tab, reading whichever page the test points at.
+    await pop.addInitScript((u) => {
+      window.__target = u;
+      const q = chrome.tabs.query.bind(chrome.tabs);
+      chrome.tabs.query = () => q({ url: window.__target });
+      chrome.tabs.getCurrent = () => Promise.resolve(undefined);
+    }, `${base}/web/springer.html`);
+    await pop.goto(`chrome-extension://${extId}/popup.html`);
+    await pop.waitForSelector('#form:not([hidden])', { timeout: 30000 });
+    ok('panel reads first page', (await pop.textContent('#title')).startsWith('Soil carbon'), await pop.textContent('#title'));
+    await pop.evaluate((u) => { window.__target = u; }, `${base}/web/wiley.html`);
+    await b.bringToFront();
+    const moved = await pop.waitForFunction(() => !/^Soil carbon/.test(document.querySelector('#title').textContent) && !document.querySelector('#form').hidden, null, { timeout: 30000 }).then(() => true, () => false);
+    ok('panel follows the new tab', moved, await pop.textContent('#title'));
+    await pop.fill('#abstract', 'My own edit');
+    await pop.evaluate((u) => { window.__target = u; }, `${base}/web/springer.html`);
+    await a.bringToFront();
+    const asked = await pop.waitForSelector('#changed:not([hidden])', { timeout: 10000 }).then(() => true, () => false);
+    ok('panel keeps unsaved edits when the tab changes', asked && (await pop.inputValue('#abstract')) === 'My own edit', 'edit was replaced');
+    await pop.click('#readNew');
+    await pop.waitForFunction(() => /^Soil carbon/.test(document.querySelector('#title').textContent) && !document.querySelector('#form').hidden, null, { timeout: 30000 }).catch(() => failures.push('panel: Read this page did not read the page'));
+    await pop.close();
+    await a.close();
+    await b.close();
   }
 
   // ---- 5. the library

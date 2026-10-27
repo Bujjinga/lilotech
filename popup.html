@@ -5,17 +5,19 @@
   <title>Lilotech</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    body { width: 600px; padding: 14px 18px 16px; }
+    body { min-width: 320px; padding: 14px 16px 90px; }
     header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
     #status { margin: 26px 0 30px; text-align: center; }
     #status .logo { flex-direction: column; gap: 10px; font-size: 22px; margin-bottom: 12px; }
     #status .logo-mark { width: 64px; height: 64px; }
-    #form[hidden], #status[hidden], #linkRow[hidden] { display: none; }
+    #form[hidden], #status[hidden], #linkRow[hidden], #changed[hidden] { display: none; }
+    header { flex-wrap: wrap; }
+    #changed { display: flex; align-items: center; gap: 8px; background: var(--soft); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; font-size: 13px; }
     .title { font-weight: 650; font-size: 16px; margin: 4px 0 10px; }
     .badge { font-size: 11px; background: var(--soft); color: var(--accent); padding: 1px 7px; border-radius: 99px; font-weight: 600; }
     .ref-head { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; }
     .ref-head label { margin: 0; }
-    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 12px; }
     textarea { min-height: 120px; max-height: 220px; }
     #linkRow { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 10px; }
     footer { margin-top: 14px; }
@@ -34,6 +36,8 @@
     <input type="text" inputmode="url" autocomplete="off" spellcheck="false" id="link" placeholder="Paste a paper link, DOI or arXiv ID" aria-label="Paper link">
     <button class="primary">Add</button>
   </form>
+
+  <div id="changed" hidden><span class="spacer">You moved to another page.</span><button id="readNew">Read this page</button></div>
 
   <div id="status"><div id="bigLogo"></div><div id="statusText" class="muted">Reading this page…</div></div>
 
@@ -71,15 +75,13 @@
       <textarea id="snippet" style="min-height:60px"></textarea>
     </div>
 
-    <label for="note">My note <span class="hint">(optional)</span></label>
-    <textarea id="note" placeholder="Why this matters for your research…" style="min-height:50px"></textarea>
-
     <footer class="row">
       <button id="save" class="primary">Save to library</button>
       <span id="savedMsg" class="saved"></span>
     </footer>
   </div>
 
+  <div id="cat"></div>
   <div class="toast" id="toast"></div>
   <script type="module" src="popup.js"></script>
 </body>

@@ -1,14 +1,28 @@
-// The Lilotech logo as inline SVG, so it can animate: the tile pops in, the book opens,
-// the text lines are written and the bookmark drops in. style.css holds the animation.
+// The Lilotech logo as inline SVG, so it can animate: an orange cat looking through a magnifying glass.
+// The tile pops in, the cat rises into view, sweeps the glass across, and blinks. style.css holds the animation.
 const SVG = `<svg class="logo-mark" viewBox="0 0 128 128" aria-hidden="true">
   <rect class="lg-tile" x="4" y="4" width="120" height="120" rx="28"/>
-  <g class="lg-book">
-    <path class="lg-page lg-left" d="M64 40C52 33 37 32 24 35V95C37 92 52 93 64 100Z"/>
-    <path class="lg-page lg-right" d="M64 40C76 33 91 32 104 35V95C91 92 76 93 64 100Z"/>
-    <path class="lg-lines" d="M34 52H54M34 62H54M34 72H50" pathLength="1"/>
+  <g class="lg-cat">
+    <path class="lg-fur" d="M30 56L35 22L58 42Z"/>
+    <path class="lg-fur" d="M102 56L97 22L74 42Z"/>
+    <path class="lg-ear" d="M37 48L39 31L51 42Z"/>
+    <path class="lg-ear" d="M95 48L93 31L81 42Z"/>
+    <ellipse class="lg-fur" cx="66" cy="73" rx="38" ry="32"/>
+    <path class="lg-stripe" d="M57 45L60 55M66 43V54M75 45L72 55"/>
+    <ellipse class="lg-muzzle" cx="62" cy="88" rx="14" ry="9"/>
+    <path class="lg-nose" d="M57.5 82H66.5L62 87Z"/>
+    <ellipse class="lg-eye" cx="46" cy="71" rx="4.5" ry="6"/>
   </g>
-  <path class="lg-ribbon" d="M82 30H96V64L89 57L82 64Z"/>
+  <g class="lg-glass">
+    <path class="lg-handle" d="M93 89L110 108"/>
+    <circle class="lg-lens" cx="80" cy="70" r="17"/>
+    <ellipse class="lg-eye lg-big" cx="80" cy="71" rx="7" ry="9"/>
+    <circle class="lg-shine" cx="82.5" cy="66.5" r="2.5"/>
+    <circle class="lg-fur" cx="104" cy="104" r="7"/>
+  </g>
 </svg>`;
+
+export const LOGO_SVG = SVG;
 
 // Put the logo (and optionally the word "Lilotech") into an element.
 export function mountLogo(el, { word = true, sub = '' } = {}) {

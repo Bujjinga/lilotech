@@ -288,7 +288,6 @@ function ris(ref, n, item = {}) {
   put('UR', link(ref));
   put('AB', item.abstract);
   if (item.conclusion) put('N1', `Conclusion: ${item.conclusion}`);
-  if (item.note) put('N1', item.note);
   for (const s of item.sectionNames || []) put('KW', s);
   L.push('ER  - ');
   const text = L.join('\n');

@@ -2,6 +2,7 @@ import { getItems, setItems, saveItem, findExisting, copyRich, toast, escapeHtml
 import { capturePdf } from './pdfread.js';
 import { STYLES, cite, inTextFor, orderFor } from './styles.js';
 import { mountLogo, replayLogo } from './logo.js';
+import { mountCat } from './cat.js';
 import { chipsHtml } from './chips.js';
 import { readLink, ALL_SITES } from './addlink.js';
 
@@ -15,6 +16,7 @@ try { filter = localStorage.getItem('lilotech.filter') || 'all'; } catch (e) { /
 
 mountLogo($('logo'), { sub: 'library' });
 replayLogo($('logo'));
+const cat = mountCat($('cat'));
 
 async function load() {
   [items, settings] = await Promise.all([getItems(), getSettings()]);
@@ -81,7 +83,7 @@ function refList(list) {
 function visible() {
   const q = $('q').value.trim().toLowerCase();
   let list = items.filter((it) => inScope(it));
-  if (q) list = list.filter((it) => [it.apa, it.ref.title, it.abstract, it.conclusion, it.note, ...sectionsOf(it).map(secName), ...(it.snippets || []).map((s) => s.text)].join(' ').toLowerCase().includes(q));
+  if (q) list = list.filter((it) => [it.apa, it.ref.title, it.abstract, it.conclusion, ...sectionsOf(it).map(secName), ...(it.snippets || []).map((s) => s.text)].join(' ').toLowerCase().includes(q));
   if ($('sort').value === 'az') return refList(list);
   return [...list].sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
 }
@@ -104,7 +106,6 @@ function card(it, n) {
       <label>Conclusion</label><textarea data-f="conclusion">${escapeHtml(it.conclusion)}</textarea>
       <label>Highlights <span class="hint">(separate each with a blank line, then ---, then a blank line)</span></label>
       <textarea data-f="snippets">${escapeHtml(snippets.map((s) => s.text).join('\n\n---\n\n'))}</textarea>
-      <label>My note</label><textarea data-f="note">${escapeHtml(it.note)}</textarea>
       <div class="row actions"><button class="primary" data-act="saveEdit">Save changes</button><button data-act="cancel">Cancel</button></div>
     </article>`;
   }
@@ -119,7 +120,6 @@ function card(it, n) {
     <details class="f" ${open}><summary>Abstract</summary>${field(it.abstract, 'No abstract saved yet.')}</details>
     <details class="f" ${open}><summary>Conclusion</summary>${field(it.conclusion, 'No conclusion saved yet.')}</details>
     ${snippets.length ? `<details class="f" open><summary>Highlights (${snippets.length})</summary>${snippets.map((s) => `<blockquote>${escapeHtml(s.text)}</blockquote>`).join('')}</details>` : ''}
-    ${it.note ? `<details class="f" open><summary>My note</summary>${field(it.note)}</details>` : ''}
     <div class="row actions">
       <button data-act="copyRef">Copy reference</button>
       <button data-act="copyAllOne">Copy with abstract &amp; conclusion</button>
@@ -156,7 +156,6 @@ function fullText(it, n) {
   if (it.abstract) parts.push('Abstract:\n' + it.abstract);
   if (it.conclusion) parts.push('Conclusion:\n' + it.conclusion);
   for (const s of it.snippets || []) parts.push('Highlight:\n“' + s.text + '”');
-  if (it.note) parts.push('Note:\n' + it.note);
   return parts.join('\n\n');
 }
 
@@ -195,7 +194,6 @@ $('list').addEventListener('click', async (e) => {
     if (apa !== it.apa) { it.apa = apa; it.apaHtml = escapeHtml(apa); it.apaEdited = true; }
     it.abstract = get('abstract');
     it.conclusion = get('conclusion');
-    it.note = get('note');
     const old = it.snippets || [];
     it.snippets = get('snippets').split(/\n\s*---\s*\n/).map((t) => t.trim()).filter(Boolean)
       .map((text) => old.find((s) => s.text === text) || { text, savedAt: new Date().toISOString() });
@@ -224,6 +222,7 @@ async function addLink(link) {
   $('addStatus').className = 'small muted';
   $('addStatus').textContent = 'Working…';
   $('addLink').disabled = true;
+  cat.busy(true);
   try {
     const data = await readLink(link, (msg) => { $('addStatus').textContent = msg; });
     const before = findExisting(items, data.ref);
@@ -243,6 +242,7 @@ async function addLink(link) {
     $('addStatus').textContent = e.message || 'Something went wrong. Try again.';
   }
   $('addLink').disabled = false;
+  cat.busy(false);
 }
 
 $('addForm').onsubmit = (e) => {
@@ -297,7 +297,7 @@ $('exWord').onclick = () => exportList((list) => {
   const p = (html) => `<p style="${hang}line-height:2">${html}</p>`;
   const block = (h, t) => (t ? `<p><b>${h}</b></p><p>${escapeHtml(t).replace(/\n/g, '<br>')}</p>` : '');
   const notes = grouped(list).map((g) => `${g.name ? `<h3>${escapeHtml(g.name)}</h3>` : ''}
-${g.list.map((i) => `<hr>${p(ref(i))}${block('Abstract', i.abstract)}${block('Conclusion', i.conclusion)}${(i.snippets || []).map((s) => block('Highlight', '“' + s.text + '”')).join('')}${block('My note', i.note)}`).join('\n')}`).join('\n');
+${g.list.map((i) => `<hr>${p(ref(i))}${block('Abstract', i.abstract)}${block('Conclusion', i.conclusion)}${(i.snippets || []).map((s) => block('Highlight', '“' + s.text + '”')).join('')}`).join('\n')}`).join('\n');
   const html = `<html><head><meta charset="utf-8"><title>References</title></head>
 <body style="font-family:'Times New Roman',serif;font-size:12pt">
 <h2 style="text-align:center">References</h2>
@@ -322,7 +322,6 @@ $('exMd').onclick = () => exportList((list) => {
       if (i.abstract) out.push('**Abstract**', '', i.abstract, '');
       if (i.conclusion) out.push('**Conclusion**', '', i.conclusion, '');
       for (const s of i.snippets || []) out.push('**Highlight**', '', quote(s.text), '');
-      if (i.note) out.push('**My note**', '', i.note, '');
     }
   }
   download(fileName('notes', 'md'), out.join('\n'), 'text/markdown');
@@ -348,12 +347,12 @@ $('exRis').onclick = () => exportList((list) => {
 $('exCsv').onclick = () => exportList((list) => {
   const esc = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
   const style = proseStyle();
-  const head = [`${STYLES[style].label} reference`, 'In-text citation', 'Title', 'Authors', 'Year', 'Journal / Site', 'DOI', 'URL', 'Sections', 'Abstract', 'Conclusion', 'Highlights', 'Note', 'Saved'];
+  const head = [`${STYLES[style].label} reference`, 'In-text citation', 'Title', 'Authors', 'Year', 'Journal / Site', 'DOI', 'URL', 'Sections', 'Abstract', 'Conclusion', 'Highlights', 'Saved'];
   const rows = list.map((i, n) => [
     cite(i, style, n + 1).text, inTextFor(i, style, n + 1), i.ref.title,
     (i.ref.authors || []).map((a) => a.literal || `${a.family}, ${a.given}`).join('; '),
     i.ref.year, i.ref.journal || i.ref.siteName, i.ref.doi, i.ref.url, sectionsOf(i).map(secName).join('; '),
-    i.abstract, i.conclusion, (i.snippets || []).map((s) => s.text).join('\n---\n'), i.note, i.savedAt,
+    i.abstract, i.conclusion, (i.snippets || []).map((s) => s.text).join('\n---\n'), i.savedAt,
   ]);
   // The BOM makes Excel open the file as UTF-8.
   download(fileName('library', 'csv'), '﻿' + [head, ...rows].map((r) => r.map(esc).join(',')).join('\r\n'), 'text/csv');
@@ -392,6 +391,7 @@ $('pdfFile').onchange = async () => {
   const files = [...$('pdfFile').files];
   $('pdfFile').value = '';
   let added = 0;
+  cat.busy(true);
   for (const f of files) {
     toast(`Reading ${f.name}…`);
     try {
@@ -407,6 +407,7 @@ $('pdfFile').onchange = async () => {
       await new Promise((r) => setTimeout(r, 1500));
     }
   }
+  cat.busy(false);
   if (added) toast(`Added ${added} PDF${added === 1 ? '' : 's'}. Check the reference, and click Edit to fix anything.`);
 };
 
