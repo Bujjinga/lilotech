@@ -2,6 +2,31 @@
 
 All notable changes to Lilotech. Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
+## [1.2.0] - 2026-10-27
+
+### Added
+- **More citation styles:** MLA 9, Chicago (author-date), Harvard, IEEE and Vancouver, alongside APA 7. Pick a style in the side panel or the library; it is remembered, and copying, in-text citations and downloads use it. IEEE and Vancouver are numbered in the order papers were saved.
+- **BibTeX and RIS:** download a `.bib` file for LaTeX and Overleaf, or a `.ris` file for Zotero, Mendeley and EndNote. Sections are exported as RIS keywords.
+- **Sections:** put each paper into one or more sections of the paper you're writing (Introduction, Related work, Methods, Results, Discussion, Conclusion, or your own). The library has a sidebar with each section and its count, plus "Unsorted". Downloads cover the section you're viewing, and Word and Markdown notes are grouped by section.
+- **Add by link:** paste a DOI, `doi.org` link, arXiv ID or link, PDF link or any article address in the library (or click **Add by link** in the side panel). Lilotech reads the page in a background tab, and fills a missing conclusion from the paper's PDF.
+- **Side panel:** Lilotech now opens in Chrome's side panel and stays open until you close it. It reads each page you switch to, and asks before replacing anything you haven't saved.
+- **New logo:** an orange cat looking through a magnifying glass. When the panel or library opens, the cat pops up, sweeps the glass across and blinks.
+- **A small orange cat** in the corner of the panel and library plays with a ball of yarn while Lilotech is working, and plays for a few seconds when you click it.
+- The animations are turned off when the computer is set to reduce motion.
+- Tests for the citation styles, link parsing, sections, exports and adding by link (267 checks in all).
+
+### Changed
+- The toolbar icon opens the side panel instead of a popup. The abstract and conclusion sit side by side when the panel is wide enough.
+- Right-click **Save this page** on a PDF opens the side panel.
+
+### Removed
+- The **My note** box. Notes saved with earlier versions stay in your backup file but are no longer shown or exported.
+- The library has a new layout: an add bar at the top, a sections sidebar, and an **Export** menu.
+- Backups now include your sections and citation style.
+
+### Fixed
+- Paragraphs in a conclusion no longer run together when a figure sits between them ("thirty years.Subsoil").
+
 ## [1.1.1] - 2026-10-27
 
 ### Fixed
@@ -67,6 +92,7 @@ All notable changes to Lilotech. Versions follow [semantic versioning](https://s
   - backup and restore as JSON.
 - Light and dark mode, and the Option+Shift+L keyboard shortcut.
 
+[1.2.0]: https://github.com/Bujjinga/lilotech/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/Bujjinga/lilotech/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Bujjinga/lilotech/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Bujjinga/lilotech/releases/tag/v1.0.0

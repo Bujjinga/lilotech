@@ -8,6 +8,10 @@ const MENU = [
   { id: 'open-library', title: 'Open my Lilotech library', contexts: ['action', 'page'] },
 ];
 
+// Clicking the toolbar icon (or Option+Shift+L) opens Lilotech in Chrome's side panel, which stays
+// open beside your pages until you close it.
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((e) => console.warn(e));
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     for (const m of MENU) chrome.contextMenus.create(m);
@@ -28,8 +32,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     const data = await capture(tab);
     if (data.pdf) {
-      // PDFs are read in the popup, which has the PDF reader.
-      chrome.action.openPopup().catch(() => flash(tab.id, 'PDF', '#3d5afe'));
+      // PDFs are read in the side panel, which has the PDF reader.
+      chrome.sidePanel.open({ tabId: tab.id }).catch(() => flash(tab.id, 'PDF', '#3d5afe'));
       return;
     }
     const items = await getItems();

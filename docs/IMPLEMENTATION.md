@@ -14,7 +14,7 @@ This document explains how Lilotech works inside: the files, the data flow, how 
 8. [Building the reference object](#8-building-the-reference-object)
 9. [APA 7 formatting](#9-apa-7-formatting)
 10. [Saving: storage and data model](#10-saving-storage-and-data-model)
-11. [The popup](#11-the-popup)
+11. [The side panel](#11-the-side-panel)
 12. [Right-click menus (background service worker)](#12-right-click-menus-background-service-worker)
 13. [The library page](#13-the-library-page)
 14. [Permissions and privacy](#14-permissions-and-privacy)
@@ -51,11 +51,16 @@ Lilotech is a Chrome extension for research reading. On any article, paper or PD
 
 ```
 lilotech/
-├── manifest.json        Extension settings: name, permissions, popup, service worker
+├── manifest.json        Extension settings: name, permissions, side panel, service worker
 ├── background.js        Service worker: right-click menus and saving from them
-├── lib.js               Shared logic: page extraction, lookups, APA 7, storage, clipboard
-├── pdfread.js           PDF reading with pdf.js (used by popup and library)
-├── popup.html / .js     The window that opens when you click the toolbar icon
+├── lib.js               Shared logic: page extraction, lookups, APA 7, storage, settings, links, clipboard
+├── styles.js            Citation styles: MLA, Chicago, Harvard, IEEE, Vancouver, BibTeX, RIS
+├── pdfread.js           PDF reading with pdf.js (used by the side panel and library)
+├── addlink.js           Saving a paper from a link, DOI or arXiv ID (used by the library)
+├── chips.js             Section chips shared by the side panel and library
+├── logo.js              The animated logo (inline SVG)
+├── popup.html / .js     The side panel that opens when you click the toolbar icon
+├── cat.js               The small orange cat that plays
 ├── library.html / .js   The full-page library (search, edit, export)
 ├── style.css            Shared styles, light and dark mode
 ├── icons/               Toolbar and store icons (16, 32, 48, 128 px)
@@ -92,14 +97,14 @@ lilotech/
                                └────────────────┘
 ```
 
-Everything goes through `lib.js`, so the popup, the right-click menus and the library all behave the same way.
+Everything goes through `lib.js`, so the side panel, the right-click menus and the library all behave the same way.
 
 The main pipeline is:
 
 ```
 capture(tab)
   ├─ web page → extractPage() in the tab → finishCapture(page)
-  └─ PDF      → { pdf: true } → popup: fetchTabPdf(tab) → readPdf(bytes) → finishCapture(page)
+  └─ PDF      → { pdf: true } → side panel: fetchTabPdf(tab) → readPdf(bytes) → finishCapture(page)
 
 finishCapture(page)
   → lookupCrossref(doi)           (falls back to DataCite)
@@ -108,6 +113,14 @@ finishCapture(page)
   → returns { page, ref, abstract, abstractSource, conclusion, selection }
 
 saveItem(ref, fields) → formatAPA(ref) + formatInText(ref) → chrome.storage.local
+
+readLink(text)                    (library: "Add paper")
+  → parseLink(text)               DOI, arXiv, PDF link or web address
+  → background tab → extractPage() → finishCapture(page)   or   PDF → capturePdf(bytes)
+  → DOI only: finishCapture({ doi })
+  → missing conclusion: readPdf(the paper's PDF)
+
+cite(item, style, n) → the reference in any style, built from item.ref when it is shown or exported
 ```
 
 ## 5. Reading a web page
@@ -150,7 +163,7 @@ Tried in this order, stopping at the first success:
 5. As a last resort, the page's `description` / `og:description`, marked as *"page description (not a formal abstract)"*.
    - Social-media wrappers are removed first. ResearchGate's `PDF | <abstract> | Find, read and cite all the research you need on ResearchGate` becomes just the abstract.
 
-The popup then fills in what's still missing from the paper's PDF (see 6.6).
+The side panel then fills in what's still missing from the paper's PDF (see 6.6).
 
 ### 5.3 Finding the conclusion
 
@@ -188,7 +201,7 @@ Results are capped at 8,000 characters.
 
 ## 6. Reading a PDF
 
-PDF code lives in `pdfread.js`. It runs only in **extension pages** (popup and library), because pdf.js needs a Web Worker, which a Manifest V3 service worker can't start.
+PDF code lives in `pdfread.js`. It runs only in **extension pages** (side panel and library), because pdf.js needs a Web Worker, which a Manifest V3 service worker can't start.
 
 ### 6.1 Loading pdf.js
 
@@ -209,8 +222,8 @@ pdfjsLib.getDocument({ data, isEvalSupported: false, disableFontFace: true })
 Three ways are tried, in order:
 
 1. **From inside the tab.** A function injected into the tab runs `fetch(url, { credentials: 'include' })`, converts the bytes to base64 and returns them. Because the request comes from the same site, it works for paywalled PDFs the user is signed in to see.
-2. **Directly from the popup**, which works when the extension already has access to that site.
-3. **Asking for permission.** The popup shows an **Allow** button that calls `chrome.permissions.request({ origins: ['https://site/*'] })` for that one site (declared under `optional_host_permissions`), then tries again.
+2. **Directly from the side panel**, which works when the extension already has access to that site.
+3. **Asking for permission.** The side panel shows an **Allow** button that calls `chrome.permissions.request({ origins: ['https://site/*'] })` for that one site (declared under `optional_host_permissions`), then tries again.
 
 `fetchTabPdf(tab, url)` fetches the PDF open in the tab by default, or any other PDF URL, such as the paper's PDF linked from the page (see 6.6). Every result is checked for the `%PDF` signature before use. PDFs on the computer (`file://`) are added with **Add a PDF** in the library instead, which reads the file with `File.arrayBuffer()`.
 
@@ -241,7 +254,7 @@ Only the first 60 pages are read.
 
 ### 6.6 Filling gaps from the paper's PDF
 
-Many pages show only the abstract: ResearchGate, arXiv abstract pages, repositories and PubMed-style landing pages. When the page has a `citation_pdf_url`, the popup does this after showing the form:
+Many pages show only the abstract: ResearchGate, arXiv abstract pages, repositories and PubMed-style landing pages. When the page has a `citation_pdf_url`, the side panel does this after showing the form:
 
 1. It shows "Looking in the paper's PDF…" and fetches the PDF with `fetchTabPdf(tab, pdfUrl)`. This happens from inside the tab, so the user's login applies.
 2. It reads the PDF with `readPdf()`.
@@ -317,6 +330,30 @@ Initials keep hyphens: "Marie-Claire" becomes "M.-C.". Group authors are written
 
 `(Smith, 2021)`, `(Smith & Lee, 2021)`, `(Smith et al., 2021)`. With no author, the first words of the title in quotes are used.
 
+### 9.4 Other citation styles (`styles.js`)
+
+APA stays in `lib.js`, because the saved `apa` text is used for search and duplicates. Every other style is built on demand from the same reference object, so changing the style never changes what is stored.
+
+`STYLES` maps a key to `{ label, format(ref, n, item), inText(ref, n), sort, code }`:
+
+| Key | Style | Reference list order | Example |
+|---|---|---|---|
+| `apa` | APA 7 | A–Z | Smith, J. A., Lee, K., & García, M. (2021). Title. *Journal*, *2*(3), 45–67. https://doi.org/… |
+| `mla` | MLA 9 | A–Z | Smith, John Andrew, et al. “Title.” *Journal*, vol. 2, no. 3, 2021, pp. 45–67, https://doi.org/…. |
+| `chicago` | Chicago author-date | A–Z | Smith, John Andrew, Kim Lee, and María García. 2021. “Title.” *Journal* 2 (3): 45–67. https://doi.org/…. |
+| `harvard` | Harvard (Cite Them Right) | A–Z | Smith, J.A., Lee, K. and García, M. (2021) ‘Title’, *Journal*, 2(3), pp. 45–67. Available at: https://doi.org/…. |
+| `ieee` | IEEE | numbered | [1] J. A. Smith, K. Lee, and M. García, “Title,” *Journal*, vol. 2, no. 3, pp. 45–67, Mar. 2021, doi: …. |
+| `vancouver` | Vancouver | numbered | 1. Smith JA, Lee K, García M. Title. Journal. 2021 Mar;2(3):45-67. doi:… |
+| `bibtex` | BibTeX | A–Z | `@article{smith2021title, author = {Smith, John Andrew and …}, …}` |
+| `ris` | RIS | A–Z | `TY  - JOUR`, `AU  - …`, …, `ER  - ` |
+
+- A small builder keeps the plain-text and HTML (`<i>`) versions in step, so every style copies with italics.
+- With no author, Chicago and Harvard move the title to the front; MLA starts with the title in quotes.
+- Numbered styles take `n`, the paper's position in the reference list. The library numbers papers in the order they were saved (oldest first) within the section being viewed.
+- BibTeX keys are `familyYEARfirstword` (`smith2021climate`), with accents removed. Special LaTeX characters (`& % $ # _ { } ~ ^ \`) are escaped, and titles are wrapped in double braces to keep their capitals. The `.bib` download adds `a`, `b`, … to repeated keys.
+- RIS puts the abstract in `AB`, the conclusion in `N1`, and each section name in `KW`, so sections arrive in Zotero, Mendeley and EndNote as tags.
+- `cite(item, style, n)` keeps a hand-edited APA reference (`apaEdited`) as written; other styles are always rebuilt from `item.ref`.
+
 ## 10. Saving: storage and data model
 
 All items are stored as one array under the key `items` in `chrome.storage.local`:
@@ -331,23 +368,52 @@ All items are stored as one array under the key `items` in `chrome.storage.local
   abstract: '', abstractSource: 'page' | 'page metadata' | 'Crossref' | 'PDF text' | 'your highlight' | …,
   conclusion: '',
   snippets: [{ text: 'highlighted text', savedAt: 'ISO date' }],
-  note: ''
+  note: '',                               // only from versions before 1.2.0; no longer shown
+  sections: ['related', 'introduction']   // section ids, see below
 }
 ```
+
+Settings live under the key `settings` (`getSettings` / `setSettings` in `lib.js`):
+
+```js
+{
+  style: 'apa',                 // a key of STYLES
+  sections: [{ id: 'introduction', name: 'Introduction' }, { id: 'related', name: 'Related work' }, …]
+}
+```
+
+- The six default sections are Introduction, Related work, Methods, Results, Discussion and Conclusion. New ones get an id made from their name (`newSectionId`), with `-2`, `-3` added if needed.
+- Deleting a section removes its id from every item; the papers stay.
+- `saveItem` only changes `sections` when it is given an array, so right-click saves never touch them.
 
 - **Duplicate detection (`findExisting`).** The same DOI, or the same URL (ignoring `#…` and a trailing `/`), or the same title for local PDFs with no DOI or URL. A match updates the existing item instead of adding a new one.
 - **Manual edits win.** If the user edited the reference text in the library (`apaEdited: true`), later saves never overwrite it. Right-click saves only fill an abstract or conclusion that is empty.
 - **Duplicate highlights** are not added twice.
 
-## 11. The popup
+## 11. The side panel
 
-`popup.html` + `popup.js`. When the popup opens it:
+`popup.html` + `popup.js`, shown in Chrome's side panel (`"side_panel": { "default_path": "popup.html" }` and the `sidePanel` permission in `manifest.json`). `background.js` calls `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`, so clicking the toolbar icon or pressing the shortcut opens the panel instead of a popup. Unlike a popup, the panel stays open while the user clicks on pages and switches tabs, until they close it. It needs Chrome 116 or newer (`minimum_chrome_version`).
+
+When the panel opens, and again whenever the page changes, it:
 
 1. gets the active tab (`chrome.tabs.query`), which the `activeTab` permission allows when the user clicks the icon;
 2. runs `capture(tab)`, or the PDF path when the tab is a PDF;
-3. shows the type badge, title, formatted reference, in-text citation, and editable boxes for the abstract, conclusion, highlight and note;
+3. shows the type badge, title, formatted reference, in-text citation, section chips, and editable boxes for the abstract, conclusion and highlight;
 4. if the item already exists, pre-fills the saved values and changes the button to **Update in library**;
-5. on **Save**, calls `saveItem(ref, fields)`.
+5. on **Save**, calls `saveItem(ref, fields)`, including the ticked sections.
+
+**Following your tabs.** The panel listens to `chrome.tabs.onActivated` and to `chrome.tabs.onUpdated` with `status: 'complete'` on the active tab of its own window, and reads the page again (`refresh()`).
+- Each read gets a number (`run`); a slow read of an old tab is dropped when a newer one has started.
+- If the user changed anything that isn't saved (`dirty`), the panel doesn't replace it. It shows "You moved to another page" with a **Read this page** button instead.
+- Clicking the icon grants `activeTab` for that tab only. For other tabs Lilotech needs host permission, so when a page can't be read and the site isn't allowed, the panel shows an **Allow** button that requests `https://*/*` and `http://*/*` (the optional host permissions) once.
+- When `popup.html` is opened as a normal tab (as the tests do), `chrome.tabs.getCurrent()` returns that tab and the panel doesn't follow other tabs.
+
+The layout is fluid, so it fits any panel width the user drags to; the abstract and conclusion go side by side above about 500 px.
+
+- **Citation style.** A menu next to the reference lists `STYLES`. Changing it calls `setSettings({ style })` and redraws the reference and in-text citation with `cite()` and `inTextFor()`. For numbered styles the panel uses the number the paper has, or will have, in the library.
+- **Sections.** `mountChips()` in `chips.js` draws one toggle per section and a **+ New section** chip that turns into a text box.
+- **Add by link.** The button shows a box for a link. On submit, the panel asks for permission to read websites while the click still counts as a user gesture (`chrome.permissions.request` must be called from one), then runs `readLink()` (section 13.2) and shows the result in the form, so the user can check it and pick sections before saving. The library also understands `library.html?add=<link>`.
+- **Logo and cat.** See sections 13.3 and 13.4.
 
 **Copy reference** uses `navigator.clipboard.write` with both `text/html` and `text/plain` (`copyRich` in `lib.js`), so the italics survive pasting into Word.
 
@@ -365,16 +431,22 @@ The keyboard shortcut is declared in `manifest.json` under `commands._execute_ac
 | Save highlight as the Conclusion | selection | save, with the selection as the conclusion |
 | Open my Lilotech library | toolbar icon, page | opens `library.html` |
 
-On success the toolbar icon briefly shows a green **✓** badge (`chrome.action.setBadgeText`). On error it shows a red **!**. If the tab is a PDF, the worker opens the popup (`chrome.action.openPopup()`), because only the popup can run pdf.js.
+On success the toolbar icon briefly shows a green **✓** badge (`chrome.action.setBadgeText`). On error it shows a red **!**. If the tab is a PDF, the worker opens the side panel (`chrome.sidePanel.open({ tabId })`, allowed because the menu click is a user gesture), because only extension pages can run pdf.js.
 
 ## 13. The library page
 
 `library.html` + `library.js`, opened as a normal tab at `chrome-extension://<id>/library.html`.
 
+**Layout**
+- Header: the animated logo, the count, and the **Citation style** menu.
+- Add bar: a box for a link, DOI or arXiv ID, **Add paper**, and **Add a PDF**.
+- Left sidebar: All papers, each section, and Unsorted, each with a count, plus a box to make a new section. The chosen section is remembered in `localStorage`. On narrow windows the sidebar moves above the list.
+- Main column: the section's name, search, sort and an **Export** menu (a `<details>` element styled as a drop-down).
+
 **Display**
-- Cards show the reference with a hanging indent, the in-text citation, the saved date, and collapsible Abstract, Conclusion, Highlights and Note sections.
-- **Search** filters across the reference, abstract, conclusion, highlights and note.
-- **Sort** by newest first, or A–Z (APA reference-list order).
+- Cards show the reference in the chosen style (BibTeX and RIS in a monospace block), the in-text citation, the saved date, the section chips, and collapsible Abstract, Conclusion and Highlights sections. Clicking a chip adds the paper to that section or takes it out.
+- **Search** filters across the reference, title, abstract, conclusion, highlights and section names.
+- **Sort** by newest first, or reference-list order for the chosen style (A–Z, or numbered oldest first).
 - The page re-renders automatically when storage changes (`chrome.storage.onChanged`), for example when something is saved from another tab.
 
 **Item actions**
@@ -386,17 +458,77 @@ On success the toolbar icon briefly shows a green **✓** badge (`chrome.action.
 
 **Library actions**
 
+Every export covers the section being viewed, in reference-list order for the chosen style, and the file name includes the section's name.
+
 | Button | Output |
 |---|---|
+| Add paper | Reads a link, DOI or arXiv ID (section 13.2) → `saveItem` |
 | Add a PDF | Picks one or more PDFs → `capturePdf` → `saveItem` |
-| Copy all references | All references A–Z, as rich text with hanging indents |
-| Download for Word | A `.doc` (HTML that Word opens): Times New Roman 12 pt, double-spaced, 0.5″ hanging indent; a "References" page, then "Reading notes" |
-| Download notes (.md) | Markdown with `*italics*`; reference list plus notes per source |
-| Download spreadsheet (.csv) | One row per source; UTF-8 with BOM so Excel shows accents correctly |
-| Backup | JSON file of the whole library |
-| Restore | Merges a backup file, adding only items whose `id` isn't already present |
+| Copy all references | References in the chosen style, as rich text with hanging indents |
+| Download for Word | A `.doc` (HTML that Word opens): Times New Roman 12 pt, double-spaced, 0.5″ hanging indent (none for numbered styles); a "References" page, then "Reading notes", grouped by section when viewing All papers. BibTeX and RIS fall back to APA here |
+| Download notes (.md) | Markdown with `*italics*`; reference list plus notes per source, grouped by section like the Word file |
+| Download BibTeX (.bib) | One entry per source, with unique keys |
+| Download for Zotero, Mendeley, EndNote (.ris) | One record per source; sections become keywords |
+| Download spreadsheet (.csv) | One row per source, including a Sections column; UTF-8 with BOM so Excel shows accents correctly |
+| Backup library | JSON file of the whole library and the settings (`version: 2`) |
+| Restore from backup | Merges a backup file, adding only items whose `id` isn't already present, and any custom sections they use |
+
+Papers added with **Add paper** or **Add a PDF** while a section is selected go into that section.
 
 Files are downloaded with a `Blob`, `URL.createObjectURL` and a temporary `<a download>`.
+
+### 13.1 Sections
+
+The sidebar and the chips both read `settings.sections`. An item belongs to a section when the section's id is in `item.sections`; ids of deleted sections are ignored. "Unsorted" is every item with no current section. When All papers is viewed and at least one paper is in a section, the Word and Markdown notes have one heading per section (in sidebar order) and then Unsorted; a paper in two sections appears under both.
+
+### 13.2 Add by link (`addlink.js`)
+
+`parseLink(text)` in `lib.js` recognises, in this order:
+
+| Input | Result |
+|---|---|
+| `2401.01234`, `arXiv:2401.01234v2`, `hep-th/9901001`, `arxiv.org/abs/…`, `arxiv.org/pdf/…` | `arxiv`, with DOI `10.48550/arXiv.<id>`, the abstract page and the PDF link |
+| `10.xxxx/…`, `doi:10.xxxx/…`, `https://doi.org/…` (also URL-encoded) | `doi` |
+| A link ending in `.pdf` | `pdf` |
+| Any other `http(s)` link, or `www.…` | `url`; a DOI inside a publisher link (`/doi/10.…`) is kept as a hint |
+
+`readLink(text)`:
+
+1. For a PDF link, downloads it and runs `capturePdf`.
+2. For anything else, opens the link in a background tab (`chrome.tabs.create({ active: false })`), waits for it to finish loading (at most 30 seconds), runs `extractPage()` in it, and closes it. A `doi.org` link ends up on the publisher's page, so the abstract and conclusion come from there. If the tab turns out to be a PDF, it is read with pdf.js instead.
+3. If that found nothing (no permission, or the page failed) but there is a DOI, `finishCapture({ doi })` still gets the reference from Crossref or DataCite, and often the abstract.
+4. If the conclusion is missing and the page links to its PDF (or it's arXiv), reads it from the PDF, as in section 6.6.
+
+Reading another site needs host permission. **Add paper** calls `chrome.permissions.request({ origins: ['https://*/*', 'http://*/*'] })` directly in the click handler, because Chrome only shows the prompt during a user gesture. Chrome asks once; after that it answers straight away. Saving an existing paper again only fills empty fields and keeps its sections.
+
+### 13.3 Logo animation (`logo.js`)
+
+The logo is an orange cat looking through a magnifying glass on a blue tile. It is inline SVG so its parts can move: the tile, the cat (ears, head, stripes, muzzle, eye) and the glass (yellow handle, lens, enlarged eye, paw). `mountLogo(el)` inserts it (with the word "Lilotech" as one `<span>` per letter), and `replayLogo(el)` adds the `play` class, which starts these CSS animations in `style.css`:
+
+| Part | Animation | Time |
+|---|---|---|
+| Tile | scales up from 60% with a small overshoot | 0–0.32 s |
+| Cat | rises into the tile with a small overshoot | 0.12–0.57 s |
+| Magnifying glass | sweeps left and right around the cat's head, as if searching | 0.3–1.3 s |
+| Eyes | blink (`scaleY` with `transform-box: fill-box`) | 1.25–1.5 s |
+| Letters | rise and fade in one after another, 45 ms apart | 0.25–0.9 s |
+
+The side panel shows a large logo while it reads the page, and the small one in the header. The library plays it on load and again after adding a paper. Under `prefers-reduced-motion: reduce` all of it is switched off.
+
+The toolbar icons (`icons/icon16.png` to `icon128.png`) are this SVG rendered at each size with Playwright (`locator('svg').screenshot({ omitBackground: true })`).
+
+### 13.4 The playful cat (`cat.js`)
+
+`mountCat(el)` draws a small orange cat with a pink ball of yarn, fixed to the bottom-right corner of the side panel and the library, and returns `{ play(ms), busy(on) }`.
+
+| State | What moves |
+|---|---|
+| Idle | the tail swishes every 2.6 s and the eyes blink every 4.5 s; on hover the head tilts |
+| Playing (`.playing` class) | the front paw bats, the yarn rolls back and forth, the head tilts, the body hops, and the tail swishes faster |
+
+- `busy(true)` keeps it playing while Lilotech is reading a page, a PDF or a link; `busy(false)` stops it.
+- Clicking it (or pressing Enter or Space, since it is a focusable button) calls `play(3200)`. Saving a paper plays it for 2 seconds.
+- Under reduced motion the cat stays still and just raises its paw when playing.
 
 ## 14. Permissions and privacy
 
@@ -407,7 +539,7 @@ Files are downloaded with a `Blob`, `URL.createObjectURL` and a temporary `<a do
 | `storage`, `unlimitedStorage` | Keep the library locally, with no size limit |
 | `contextMenus` | The right-click menu items |
 | `host_permissions`: `api.crossref.org`, `api.datacite.org` | Call the two lookup services |
-| `optional_host_permissions`: `https://*/*`, `http://*/*` | Asked for **one site at a time**, only when a PDF from that site can't be read otherwise |
+| `optional_host_permissions`: `https://*/*`, `http://*/*` | Asked for **one site at a time** when a PDF from that site can't be read otherwise, or for **all sites** the first time the user adds a paper by link (so Lilotech can open and read the link) |
 
 - No data leaves the computer except the DOI or title sent to Crossref or DataCite.
 - PDFs are parsed locally.
@@ -417,13 +549,13 @@ Files are downloaded with a `Blob`, `URL.createObjectURL` and a temporary `<a do
 
 The order below is how to rebuild Lilotech, testing after every step.
 
-1. **Skeleton.** Create `manifest.json` with `manifest_version: 3`, a name, a version, `action.default_popup: "popup.html"` and the icons. Add an empty `popup.html` that says "Hello". Load it with **Load unpacked** and check that the popup opens.
+1. **Skeleton.** Create `manifest.json` with `manifest_version: 3`, a name, a version, `side_panel.default_path: "popup.html"`, the `sidePanel` permission and the icons, and call `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` from the service worker. Add a `popup.html` that says "Hello". Load it with **Load unpacked** and check that clicking the icon opens the side panel.
 2. **Read the page.** Add the `activeTab` and `scripting` permissions. In `popup.js`, get the active tab and run `chrome.scripting.executeScript({ target: { tabId }, func })` with a small function that returns `document.title`. Show the result.
-3. **Metadata extraction.** Grow that function into `extractPage()`: meta tags, then JSON-LD, then DOI (section 5.1). Print the result as JSON in the popup and try it on several journals.
+3. **Metadata extraction.** Grow that function into `extractPage()`: meta tags, then JSON-LD, then DOI (section 5.1). Print the result as JSON in the panel and try it on several journals.
 4. **Abstract and conclusion.** Add the selector list and the heading-based `textAfter()` (sections 5.2–5.4). Test on a journal article, a preprint page and a news article.
 5. **APA 7.** Write `parseName`, `formatAuthors` and `formatAPA` (section 9) as pure functions in a separate module. Test them in Node with sample objects before wiring them in.
 6. **Online lookup.** Add `host_permissions` for `https://api.crossref.org/*` and write `lookupCrossref(doi)`. Merge its fields over the page data in `buildReference`.
-7. **Saving.** Add the `storage` permission and write `getItems`, `setItems`, `findExisting` and `saveItem` (section 10). Add a **Save** button to the popup.
+7. **Saving.** Add the `storage` permission and write `getItems`, `setItems`, `findExisting` and `saveItem` (section 10). Add a **Save** button to the panel.
 8. **Library page.** Create `library.html`/`library.js`: render cards from storage, add search, then edit and delete, then the export buttons.
 9. **Right-click menus.** Add `contextMenus` and a module service worker (`"background": { "service_worker": "background.js", "type": "module" }`). Create the menus in `onInstalled` and handle `onClicked` by reusing `capture()` and `saveItem()`.
 10. **Clipboard with italics.** Add `copyRich()` using `ClipboardItem` with `text/html` and `text/plain`.
@@ -434,12 +566,17 @@ The order below is how to rebuild Lilotech, testing after every step.
     - Add `fetchTabPdf()`, the **Allow** flow with `optional_host_permissions`, and **Add a PDF** in the library.
 12. **Fallbacks.** Add the DataCite lookup and the strict Crossref title search (section 7).
 13. **Polish.** Icons (16/32/48/128 px PNG), dark mode in `style.css`, the keyboard shortcut, and empty-state messages.
+14. **Citation styles.** Write `styles.js` (section 9.4) as pure functions and test them in Node. Add `getSettings`/`setSettings`, a style menu in the panel and library, and the `.bib` and `.ris` downloads.
+15. **Sections.** Add `sections` to items and settings (section 10), the chips (`chips.js`), the library sidebar and the grouped exports (section 13.1).
+16. **Add by link.** Write `parseLink` and test it in Node, then `addlink.js` (section 13.2) and the add bar.
+17. **Animated logo and cat.** Draw the icon and the cat as SVG and add the CSS animations (sections 13.3 and 13.4).
+18. **Following tabs.** Listen to tab changes in the panel, with the unsaved-changes check (section 11).
 
 ## 16. Running and debugging
 
 - **Load:** `chrome://extensions` → Developer mode → **Load unpacked** → choose the folder.
 - **After editing:** click the reload arrow on the Lilotech card, then reload the web page you're testing on.
-- **Popup console:** right-click the Lilotech icon → **Inspect popup**.
+- **Side panel console:** right-click inside the open side panel → **Inspect**.
 - **Service worker console:** on `chrome://extensions`, click **service worker** on the Lilotech card.
 - **Library console:** open the library tab, then Option+Command+I.
 - **See stored data:** in any of those consoles, run `chrome.storage.local.get('items').then(console.log)`.
@@ -456,9 +593,12 @@ npm test                         # runs everything
 npm test -- wiley                # runs only test files whose name contains "wiley"
 ```
 
-`tests/run.mjs` runs four groups and prints every failure with what was expected and what was found:
+`tests/run.mjs` runs five groups and prints every failure with what was expected and what was found:
 
-1. **APA 7 unit tests** in plain Node: 2 and 21+ authors, particles and hyphens, group authors, journal articles with italics, article numbers, web pages with full dates, no author, no date, and in-text citations.
+1. **Unit tests** in plain Node:
+   - APA 7: 2 and 21+ authors, particles and hyphens, group authors, journal articles with italics, article numbers, web pages with full dates, no author, no date, and in-text citations.
+   - Other styles: an article in MLA, Chicago, Harvard, IEEE and Vancouver, in-text citations, BibTeX keys and escaping, RIS fields, web pages with no author, and a hand-edited APA reference.
+   - Links: DOIs (plain, `doi:`, `doi.org`, URL-encoded), arXiv IDs and links, publisher links with a DOI, PDF links, bare domains and text that isn't a link.
 2. **Web pages.**
    - `tests/fixtures/web/*.html` are copies of real publisher page layouts: ScienceDirect, Springer/Nature, Wiley, IEEE Xplore, MDPI, PubMed, PubMed Central, arXiv HTML, Taylor & Francis, ResearchGate (with and without an abstract block), a Medium-style blog, a WordPress blog, a news site, a single-page app that renders late, a page with a hidden "Abstract" tab, and a page with nothing to find.
    - Each page is opened in Chromium and `extractPage()` is run on it.
@@ -466,9 +606,16 @@ npm test -- wiley                # runs only test files whose name contains "wil
    - `tests/fixtures/pdf/*.html` are turned into PDFs with Chromium's print-to-PDF at test time, so no binary files are stored.
    - They copy real layouts: Elsevier (masthead, letter-spaced headings, article info column, running header, conclusion across a page break), IEEE (`Abstract—`, roman numerals), Wiley (structured abstract, `5 | CONCLUSIONS`, repeated footer), Springer (inline `Abstract`), a thesis with no DOI, and a ResearchGate-hosted paper.
    - They're read by `readPdf()` inside the real extension.
-4. **The popup, end to end.**
-   - The extension is loaded into Chromium and the popup is pointed at a page.
+4. **The side panel, end to end.**
+   - The extension is loaded into Chromium and `popup.html` is pointed at a page.
    - The test checks that the abstract comes from the page and the conclusion comes from the page or from its linked PDF (ResearchGate).
+   - It also checks the logo, switches the style to IEEE, ticks a section, saves, and checks what was stored.
+   - It checks that the toolbar icon opens the side panel, that there is no note box, and that the cat plays when clicked and then stops.
+   - It pretends to be the side panel (no tab of its own) and checks that switching tabs reads the new page, and that unsaved edits are kept with a **Read this page** button.
+5. **The library.**
+   - Three papers are put in storage. The test checks the section counts, the section filter, IEEE numbering, BibTeX cards and MLA order.
+   - It downloads `.bib`, `.ris` and `.md` files and checks their contents, including notes grouped by section.
+   - It toggles a section chip, makes a new section, adds a web page and a PDF by link into it, and checks that text that isn't a link shows an error.
 
 **Expectations.** Each `expected.json` lists, per file, the DOI, title and year, and for the abstract and conclusion:
 - `starts`: the text it must start with;
@@ -505,7 +652,7 @@ Before each release, also try a few live pages by hand: Nature or Springer, Scie
 
 **Ideas**
 - A sentence-case button that lowercases words except acronyms and words after a colon.
-- More citation styles (MLA, Chicago, Harvard) and BibTeX/RIS export for Zotero, Mendeley and EndNote.
-- Tags or folders per project.
+- More citation styles through CSL (the format Zotero uses), and a style per section.
+- Reading notes per section written as a draft paragraph outline.
 - Open-access links through the Unpaywall API, and retraction warnings.
 - Sync between computers with `chrome.storage.sync` (it has small size limits, so only the references could be synced).
