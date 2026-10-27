@@ -25,8 +25,8 @@ function pageLines(content) {
       // New line. A big vertical gap, or a jump back up (next column), starts a new paragraph.
       if (line) lines.push(line);
       const gap = last ? last.y - y : 0;
-      if (last && (gap > last.h * 1.9 || gap < -last.h * 2)) lines.push({ text: '', size: 0 });
-      line = { text: it.str, size: h };
+      if (last && (gap > last.h * 1.9 || gap < -last.h * 2)) lines.push({ text: '', size: 0, y });
+      line = { text: it.str, size: h, y };
     } else {
       const needsSpace = last && x - last.xEnd > h * 0.15 && !/\s$/.test(line.text) && !/^\s/.test(it.str);
       line.text += (needsSpace ? ' ' : '') + it.str;
@@ -35,7 +35,51 @@ function pageLines(content) {
     last = { y, h, xEnd: x + (it.width || 0) };
   }
   if (line) lines.push(line);
-  return lines.map((l) => ({ text: l.text.replace(/\s+/g, ' ').trim(), size: l.size }));
+  return lines.map((l) => ({ text: l.text.replace(/\s+/g, ' ').trim(), size: l.size, y: l.y }));
+}
+
+// Remove running headers and footers (journal name, page numbers, "Downloaded from…") so they
+// don't end up in the middle of an abstract or conclusion that crosses a page break.
+// A line counts as running when it sits in the top or bottom 10% of the page and the same
+// text (ignoring numbers) appears on at least two pages. Lone page numbers there go too.
+function dropRunningLines(pages, heights) {
+  const key = (t) => t.toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
+  const inBand = (l, h) => l.text && (l.y > h * 0.9 || l.y < h * 0.1);
+  const counts = new Map();
+  pages.forEach((lines, i) => {
+    const seen = new Set(lines.filter((l) => inBand(l, heights[i])).map((l) => key(l.text)));
+    seen.forEach((k) => counts.set(k, (counts.get(k) || 0) + 1));
+  });
+  const removed = [];
+  const kept = pages.map((lines, i) => lines.filter((l) => {
+    if (!inBand(l, heights[i])) return true;
+    const running = (pages.length > 1 && counts.get(key(l.text)) >= 2) || /^(page\s*)?\d{1,4}(\s*(of|\/)\s*\d{1,4})?$/i.test(l.text);
+    if (running) removed.push(l.text);
+    return !running;
+  }));
+  return { pages: kept, removed };
+}
+
+// Title: the biggest text on page 1 that isn't the journal's masthead.
+function guessTitle(lines, running) {
+  const p1 = lines.filter((l) => l.text.length > 3);
+  const test = (i, re) => !!p1[i] && re.test(p1[i].text);
+  // Elsevier layout: "Contents lists available at…", then the journal name, then "journal homepage: …".
+  const masthead = (l, i) =>
+    running.some((r) => r.toLowerCase().includes(l.text.toLowerCase())) ||
+    test(i + 1, /journal homepage|^www\.|issn/i) || test(i + 2, /journal homepage/i) || test(i - 1, /contents lists available/i) ||
+    /^(original (research )?article|research (article|paper)|review( article)?|article|open access|letter|editorial)$/i.test(l.text);
+  const sizes = [...new Set(p1.map((l) => Math.round(l.size * 2) / 2))].sort((a, b) => b - a);
+  for (const size of sizes.slice(0, 4)) {
+    const group = p1.map((l, i) => ({ l, i })).filter(({ l }) => Math.abs(l.size - size) < 0.6);
+    if (group.some(({ l, i }) => masthead(l, i))) continue;
+    // Contiguous lines of this size form the title.
+    const first = group[0].i;
+    const parts = group.filter(({ i }, k) => i - first === k).map(({ l }) => l.text);
+    const t = oneLine(parts.join(' '));
+    if (t.split(' ').length >= 2 && t.length >= 8 && t.length < 300) return t;
+  }
+  return '';
 }
 
 // Join lines into readable paragraphs and undo end-of-line hyphenation.
@@ -95,12 +139,15 @@ export async function readPdf(data, url = '') {
   const xmp = meta.metadata;
   const xget = (k) => { try { return xmp ? oneLine(String(xmp.get(k) || '')) : ''; } catch (e) { return ''; } };
 
-  const pages = [];
+  const rawPages = [];
+  const heights = [];
   const n = Math.min(doc.numPages, MAX_PAGES);
   for (let p = 1; p <= n; p++) {
     const page = await doc.getPage(p);
-    pages.push(pageLines(await page.getTextContent()));
+    heights.push(page.getViewport({ scale: 1 }).height);
+    rawPages.push(pageLines(await page.getTextContent()));
   }
+  const { pages, removed } = dropRunningLines(rawPages, heights);
   const firstLines = pages.slice(0, 3).flat();
   const allLines = pages.flat();
   const firstText = firstLines.map((l) => l.text).join('\n');
@@ -116,28 +163,31 @@ export async function readPdf(data, url = '') {
 
   // Title: biggest text on page 1, unless the PDF's own title looks good.
   let title = oneLine(info.Title || xget('dc:title'));
-  if (junkTitle(title)) {
-    const p1 = (pages[0] || []).filter((l) => l.text.length > 3);
-    const big = Math.max(0, ...p1.map((l) => l.size));
-    const t = oneLine(p1.filter((l) => l.size >= big * 0.92).map((l) => l.text).join(' '));
-    title = t.length >= 8 && t.length < 300 ? t : '';
-  }
+  if (junkTitle(title)) title = guessTitle(pages[0] || [], removed);
 
   const authorMeta = oneLine(info.Author || xget('dc:creator'));
   const authors = authorMeta && !/^(user|admin|author|unknown|owner)$/i.test(authorMeta)
     ? authorMeta.split(/\s*(?:;|\band\b|&)\s*/).flatMap((a) => (/,.*,/.test(a) ? a.split(/\s*,\s*/) : [a])).filter((a) => a.length > 1)
     : [];
 
-  // Abstract: after an "Abstract" label, up to keywords / introduction.
-  const absStop = /^(keywords?|key ?words|index terms|jel|(1|i)\.?\s*introduction|introduction|background|©|copyright|received\b|article history|highlights)\b/i;
-  let abstract = sectionFrom(firstLines, /^\s*(a\s?b\s?s\s?t\s?r\s?a\s?c\s?t|summary)\s*[:.\-–—]?\s*/i, absStop, { inline: true });
+  // Abstract: after an "Abstract" label, up to keywords or the first section.
+  // "Background:" inside a structured abstract is not a stop; a "1 Introduction" heading is.
+  const absStop = /^((keywords?|key ?words|index terms|jel( classification)?)\b|((1|i)\s*[.|)]?\s*)?(introduction|background|highlights|article info|a r t i c l e i n f o)\s*$|©|copyright\b|(received|accepted|published)\s*:?\s*\d|article history|https?:\/\/(dx\.)?doi\.org\/|doi:\s*10\.)/i;
+  let abstract = sectionFrom(firstLines, /^\s*(a\s?b\s?s\s?t\s?r\s?a\s?c\s?t\b|summary\s*(?=[:.\-–—]|$))\s*[:.\-–—]?\s*/i, absStop, { inline: true });
+  if (abstract.length > 4000) {
+    // Too long to be an abstract: the stop line was missed. Keep whole paragraphs up to 4,000 characters.
+    const head = abstract.slice(0, 4000);
+    abstract = head.lastIndexOf('\n\n') > 500 ? head.slice(0, head.lastIndexOf('\n\n')) : head;
+  }
 
   // Conclusion: the last "Conclusion(s)" heading, up to references / acknowledgements.
-  const num = '^\\s*((\\d+(\\.\\d+)*|[IVX]+)[.)]?\\s*)?';
-  const conclStop = /^\s*((\d+(\.\d+)*|[IVX]+)[.)]?\s*)?(references|bibliography|literature cited|works cited|acknowledge?ments?|funding|declarations?|appendix|author contributions|data availability|conflicts? of interest|competing interests|supplementary|abbreviations)\b/i;
+  const num = '^\\s*((\\d+(\\.\\d+)*|[IVX]+)\\s*[.)|]?\\s*)?';
+  const conclStop = /^\s*((\d+(\.\d+)*|[IVX]+|[A-Z])\s*[.)|]?\s*)?(references|bibliography|literature cited|works cited|acknowledge?ments?|funding|financial support|declarations?|appendix|appendices|authors?'? contributions?|credit\b|data (and code )?availability|conflicts? of interest|competing interests?|disclosure|ethic(s|al)|consent|supplementary|supporting information|abbreviations|notes|footnotes|orcid|open access|publisher'?s note)\b/i;
+  // In a structured abstract ("Conclusions: …"), stop at keywords or the first numbered section.
+  const inlineStop = new RegExp(conclStop.source + '|' + absStop.source + '|^\\s*(\\d+|[IVX]+)\\s*[.|)]\\s+[A-Z]', 'i');
   const conclusion =
     sectionFrom(allLines, new RegExp(num + '(conclusions?|concluding remarks|summary and conclusions?|conclusions? and .{0,40}|discussion and conclusions?)\\s*\\.?\\s*$', 'i'), conclStop, { last: true }) ||
-    sectionFrom(allLines, new RegExp(num + '(conclusions?|concluding remarks)\\s*[:.\\-–—]\\s*', 'i'), conclStop, { last: true, inline: true });
+    sectionFrom(allLines, new RegExp(num + '(conclusions?|concluding remarks)\\s*[:.\\-–—]\\s*', 'i'), inlineStop, { last: true, inline: true });
 
   return {
     url,
@@ -156,15 +206,16 @@ export async function readPdf(data, url = '') {
   };
 }
 
-// Fetch the PDF that's open in a tab. Tries, in order:
+// Fetch a PDF for a tab: the PDF open in it, or the paper's PDF linked from it. Tries, in order:
 // 1. from inside the tab (same site, so it works for PDFs you're signed in to see),
 // 2. straight from the extension (works when Lilotech has access to that site or to file URLs).
-export async function fetchTabPdf(tab) {
+export async function fetchTabPdf(tab, url = tab.url) {
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: async () => {
-        const r = await fetch(location.href, { credentials: 'include' });
+      args: [url],
+      func: async (u) => {
+        const r = await fetch(u, { credentials: 'include' });
         const buf = new Uint8Array(await r.arrayBuffer());
         if (buf.length > 60e6) return { error: 'too big' };
         let bin = '';
@@ -179,7 +230,7 @@ export async function fetchTabPdf(tab) {
     }
   } catch (e) { /* fall through */ }
   try {
-    const r = await fetch(tab.url, { credentials: 'include' });
+    const r = await fetch(url, { credentials: 'include' });
     const bytes = new Uint8Array(await r.arrayBuffer());
     if (isPdf(bytes)) return bytes;
   } catch (e) { /* fall through */ }

@@ -4,7 +4,7 @@
 // Page extraction. This function is injected into the page with
 // chrome.scripting.executeScript, so it must not use anything outside itself.
 // ---------------------------------------------------------------------------
-export function extractPage() {
+export async function extractPage() {
   const MAX = 8000;
   const oneLine = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const para = (s) => (s || '').replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -88,7 +88,7 @@ export function extractPage() {
     publisher: meta('citation_publisher', 'dc.publisher') || ldName(ld && ld.publisher),
     siteName: meta('og:site_name', 'application-name') || ldName(ld && ld.publisher),
     isScholarly: !!(meta('citation_title', 'citation_journal_title', 'citation_doi') || (ld && /Scholarly/.test([].concat(ld['@type']).join(' ')))),
-    pdfUrl: meta('citation_pdf_url'),
+    pdfUrl: (() => { try { const u = meta('citation_pdf_url'); return u ? new URL(u, location.href).href : ''; } catch (e) { return ''; } })(),
     doi,
     selection: para(String(window.getSelection ? window.getSelection() : '')),
     abstract: '',
@@ -96,10 +96,26 @@ export function extractPage() {
     conclusion: '',
   };
 
-  // --- Section finder: text that follows a heading, until the next heading of the same level.
+  // --- Headings. Real headings (h1–h6, role=heading) plus "pseudo headings": a short bold
+  // paragraph such as <p><strong>Conclusion</strong></p>, which many blogs and journals use.
   const headingSel = 'h1,h2,h3,h4,h5,h6,[role="heading"],.section-title,.title';
-  const isHeading = (el) => el.matches && el.matches(headingSel);
-  const levelOf = (el) => (/^H[1-6]$/.test(el.tagName) ? +el.tagName[1] : +(el.getAttribute('aria-level') || 7));
+  const isPseudoHeading = (el) => {
+    if (!/^(P|DIV)$/.test(el.tagName) || el.children.length !== 1 || !/^(STRONG|B)$/.test(el.children[0].tagName)) return false;
+    const t = oneLine(el.innerText);
+    return t.length > 0 && t.length < 60 && t === oneLine(el.children[0].innerText);
+  };
+  const isHeading = (el) => !!el.matches && (el.matches(headingSel) || isPseudoHeading(el));
+  const levelOf = (el) => (/^H[1-6]$/.test(el.tagName) ? +el.tagName[1] : el.getAttribute('aria-level') ? +el.getAttribute('aria-level') : isPseudoHeading(el) ? 8 : 7);
+  // Parts of a page that are never the article itself.
+  const offArticle = 'nav, footer, aside, [role="navigation"], [role="contentinfo"], [role="complementary"], [class*="toc" i], [id*="toc" i], [class*="similar" i], [id*="similar" i], [class*="recommend" i], [class*="related" i], [class*="sidebar" i], [class*="widget" i], [class*="citations" i]';
+  const skipBlock = (el) =>
+    /^(SCRIPT|STYLE|NAV|BUTTON|FIGURE|TABLE|ASIDE|NOSCRIPT|SVG|FORM|IMG)$/.test(el.tagName) ||
+    el.getAttribute('role') === 'figure' ||
+    /(^|[\s_-])(fig|figure|figures|graphic|table-wrap|html-fig|html-table|html-fig-wrap|html-fig_wrap|figure-caption|carousel|c-article-section__figure)([\s_-]|$)/i.test(el.className && typeof el.className === 'string' ? el.className : '');
+  const stopText = /^(keywords?|key ?words|index terms|jel classification)\b/i;
+  const headText = (h) => oneLine(h.innerText).replace(/[\s:.]+$/, '');
+
+  // Text that follows a heading, until the next heading of the same or a higher level.
   function textAfter(h) {
     const level = levelOf(h);
     let node = h;
@@ -108,32 +124,46 @@ export function extractPage() {
       let el = node.nextElementSibling;
       while (el && parts.join('\n').length < MAX) {
         if (isHeading(el) && levelOf(el) <= level) break;
-        const inner = el.querySelector && el.querySelector('h1,h2,h3');
+        const inner = el.querySelector && el.querySelector('h1,h2,h3,h4');
         if (inner && levelOf(inner) <= level && /^(SECTION|DIV)$/.test(el.tagName) && el.innerText.trim().indexOf(inner.innerText.trim()) === 0) break;
-        if (!/^(SCRIPT|STYLE|NAV|BUTTON|FIGURE|TABLE|ASIDE)$/.test(el.tagName)) parts.push(el.innerText || '');
+        if (stopText.test(oneLine(el.innerText))) break;
+        if (!skipBlock(el)) parts.push(blockText(el));
         el = el.nextElementSibling;
       }
-      const text = para(parts.join('\n\n'));
+      const text = para(parts.join('\n\n')).replace(/^[:.\-–—\s]+/, '');
       if (text.length > 60) return text;
       // Heading may be wrapped (e.g. <div class="header"><h2>…</h2></div>); try the wrapper.
       node = node.parentElement;
       if (!node || node === document.body || /^(ARTICLE|MAIN|FOOTER|NAV|ASIDE|HEADER|FORM)$/.test(node.tagName)) return '';
       if (node.tagName === 'SECTION') {
-        const t = para(node.innerText).replace(oneLine(h.innerText), '').trim();
+        const t = para(blockText(node)).replace(oneLine(h.innerText), '').replace(/^[:.\-–—\s]+/, '').trim();
         return t.length > 60 && t.length < 20000 ? t : '';
       }
     }
     return '';
   }
-  function findSection(regexes) {
-    const heads = Array.from(document.querySelectorAll(headingSel)).filter((h) => {
-      const t = oneLine(h.innerText);
-      return t && t.length < 80 && h.offsetParent !== null && !h.closest('nav, footer, aside, [role="navigation"], [role="contentinfo"]');
-    });
+  // innerText of a block without figures and tables inside it.
+  function blockText(el) {
+    if (!el.querySelector || !el.querySelector('figure, table, [role="figure"], [class*="fig" i], [class*="table-wrap" i]')) return el.innerText || '';
+    const copy = el.cloneNode(true);
+    copy.querySelectorAll('figure, table, [role="figure"], [class*="figure" i], [class*="fig_" i], [class*="fig-" i], [class*="table-wrap" i]').forEach((x) => x.remove());
+    // innerText needs a rendered element; textContent is the fallback for a detached copy.
+    return copy.textContent.replace(/[ \t]*\n[ \t]*/g, '\n');
+  }
+  const visible = (el) => el.offsetParent !== null || getComputedStyle(el).position === 'fixed';
+  function headings() {
+    return Array.from(document.querySelectorAll(headingSel + ',p,div'))
+      .filter((h) => (h.matches(headingSel) || isPseudoHeading(h)) && !h.closest(offArticle))
+      .filter((h) => { const t = headText(h); return t && t.length < 80; });
+  }
+  // Find a section by its heading. Visible headings win over hidden ones (e.g. in closed tabs).
+  function findSection(regexes, { last = false } = {}) {
+    const heads = headings();
     for (const re of regexes) {
-      // Prefer the last matching heading for conclusions (they come at the end).
-      const matches = heads.filter((h) => re.test(oneLine(h.innerText)));
-      for (const h of matches.reverse()) {
+      let matches = heads.filter((h) => re.test(headText(h)));
+      if (last) matches.reverse();
+      matches = [...matches.filter(visible), ...matches.filter((h) => !visible(h))];
+      for (const h of matches) {
         const t = textAfter(h);
         if (t) return t;
       }
@@ -141,45 +171,94 @@ export function extractPage() {
     return '';
   }
 
-  // --- Abstract
-  const stripLabel = (s) => s.replace(/^\s*(abstract|summary)\s*[:.\-–—]?\s*/i, '');
-  let abs = meta('citation_abstract', 'dc.description', 'dcterms.abstract', 'eprints.abstract');
-  if (abs && abs.length > 150) info.abstractSource = 'page metadata';
-  else abs = '';
-  if (!abs) {
-    const sels = ['[role="doc-abstract"]', 'section#abstract', '#abstract', '#Abs1-content', '#Abs1', '.abstract-content', 'section.abstract', 'div.abstract', '.c-article-section__content[id^="Abs"]', '.article-abstract', '[class*="abstract" i]', '[id*="abstract" i]'];
-    for (const sel of sels) {
-      for (const el of document.querySelectorAll(sel)) {
-        if (/^(A|BUTTON|META|SCRIPT|LI|INPUT)$/.test(el.tagName)) continue;
-        const t = stripLabel(para(el.innerText));
-        if (t.length > 150 && t.length < 12000) { abs = t; break; }
-      }
-      if (abs) { info.abstractSource = 'page'; break; }
+  const stripLabel = (s) => s.replace(/^\s*(abstract|summary)\s*[:.\-–—]?\s*/i, '').replace(/^[:.\-–—\s]+/, '');
+  const stripTags = (s) => (s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  // Social descriptions often wrap the abstract, e.g. ResearchGate:
+  // "PDF | <abstract> | Find, read and cite all the research you need on ResearchGate"
+  function cleanDescription(d) {
+    let parts = d.split(/\s+\|\s+/);
+    if (parts.length > 1) {
+      parts = parts.filter((x) => !/^(pdf|download citation|request pdf|full[- ]text available)$/i.test(x.trim()))
+        .filter((x) => !/^on .{3,40}, .+ published /i.test(x.trim()))
+        .filter((x) => !/find, read and cite|researchgate|academia\.edu|semantic scholar/i.test(x));
+      d = parts.sort((a, b) => b.length - a.length)[0] || '';
     }
+    return d.trim();
   }
-  if (!abs) {
-    abs = findSection([/^(\d+\.?\s*)?abstract$/i, /^(summary|executive summary|key points|highlights)$/i]);
-    if (abs) info.abstractSource = 'page';
-  }
-  if (!abs && ld && typeof (ld.abstract || '') === 'string' && (ld.abstract || '').length > 100) {
-    abs = para(ld.abstract);
-    info.abstractSource = 'page metadata';
-  }
-  if (!abs) {
-    const d = meta('description', 'og:description', 'twitter:description') || (ld && typeof ld.description === 'string' ? ld.description : '');
-    if (d && d.length > 60) { abs = d; info.abstractSource = 'page description (not a formal abstract)'; }
-  }
-  info.abstract = cut(abs);
+  // Abstract containers that are not the abstract itself.
+  const notAbstract = /highlight|graphical|keyword|key ?points|plain ?language|lay ?summary|abstract-?link|nav|tab-?(list|button)|toggle|preview/i;
 
-  // --- Conclusion
-  const n = '^([0-9IVX]+[.)]?\\s*)*';
-  info.conclusion = cut(findSection([
-    new RegExp(n + '(conclusions?|concluding remarks|concluding thoughts|final remarks|final thoughts)\\.?$', 'i'),
-    new RegExp(n + '(conclusions?|summary)\\s*(and|&)\\s*.{0,40}$', 'i'),
-    new RegExp(n + '(discussion\\s*(and|&)\\s*conclusions?|summary and discussion|implications)\\.?$', 'i'),
-    new RegExp(n + '(summary|the bottom line|bottom line|key takeaways|takeaways|in conclusion|wrapping up)\\.?$', 'i'),
-  ]));
+  function findAbstract() {
+    let t = stripLabel(stripTags(meta('citation_abstract', 'dc.description', 'dcterms.abstract', 'eprints.abstract', 'prism.teaser')));
+    if (t.length > 150 && !/\|/.test(t)) return { text: t, source: 'page metadata' };
 
+    t = findSection([/^(\d+\.?\s*)?abstract$/i, /^(a\s?b\s?s\s?t\s?r\s?a\s?c\s?t)$/i]);
+    if (t.length > 100) return { text: stripLabel(t), source: 'page' };
+
+    const sels = ['[role="doc-abstract"]', '[itemprop="abstract"]', 'section#abstract', '#abstract', '#Abs1-content', '.abstract-text', '.abstract-content', 'div.abstract.author', 'section.abstract', 'div.abstract', '.c-article-section__content[id^="Abs"]', '.article-abstract', '.research-detail-middle-section__abstract', '[itemprop="description"]', '.ltx_abstract', '[class*="abstract" i]', '[id*="abstract" i]'];
+    const tried = new Set();
+    for (const sel of sels) {
+      const els = Array.from(document.querySelectorAll(sel)).filter((el) => !tried.has(el));
+      // Visible first, so an open abstract beats one in a hidden tab.
+      for (const el of [...els.filter(visible), ...els.filter((x) => !visible(x))]) {
+        tried.add(el);
+        if (/^(A|BUTTON|META|SCRIPT|LI|INPUT|LINK|IMG|SPAN)$/.test(el.tagName) && sel.includes('*')) continue;
+        if (el.closest(offArticle)) continue;
+        if (notAbstract.test(`${el.id} ${typeof el.className === 'string' ? el.className : ''}`)) continue;
+        const firstHead = el.querySelector(headingSel);
+        if (firstHead && notAbstract.test(headText(firstHead))) continue;
+        t = stripLabel(para(blockText(el)));
+        t = t.split(/\n\s*(keywords?|key ?words|index terms)\b/i)[0].trim();
+        if (t.length > 150 && t.length < 12000) return { text: t, source: 'page' };
+      }
+    }
+
+    t = findSection([/^(summary|executive summary)$/i]);
+    if (t.length > 100) return { text: t, source: 'page' };
+    if (ld && typeof ld.abstract === 'string' && ld.abstract.length > 100) return { text: para(stripTags(ld.abstract)), source: 'page metadata' };
+    if (ld && /Scholarly/.test([].concat(ld['@type']).join(' ')) && typeof ld.description === 'string' && ld.description.length > 150) return { text: para(stripTags(ld.description)), source: 'page metadata' };
+
+    const d = cleanDescription(meta('description', 'og:description', 'twitter:description') || (ld && typeof ld.description === 'string' ? ld.description : ''));
+    if (d && d.length > 60) return { text: d, source: 'page description (not a formal abstract)' };
+    return { text: '', source: '' };
+  }
+
+  const n = '^([0-9IVX]+(\\.\\d+)*\\s*[.)|]?\\s*)*';
+  function findConclusion(abstract) {
+    const t = findSection([
+      new RegExp(n + '(conclusions?|concluding remarks|concluding thoughts|final remarks|final thoughts|in conclusion)$', 'i'),
+      new RegExp(n + '(conclusions?|summary)\\s*(and|&)\\s*.{0,40}$', 'i'),
+      new RegExp(n + '(discussion\\s*(and|&)\\s*conclusions?|summary and discussion|implications)$', 'i'),
+      new RegExp(n + '(summary|the bottom line|bottom line|key takeaways|takeaways|wrapping up)$', 'i'),
+    ], { last: true });
+    if (t) return t;
+    // Structured abstract ("Background: … Conclusions: …"), common on PubMed.
+    const m = /(?:^|\n|\.\s)\s*conclusions?\s*:\s*([\s\S]+?)(?=\n\s*[A-Z][A-Za-z ]{2,30}:\s|$)/i.exec(abstract || '');
+    return m ? para(m[1]) : '';
+  }
+
+  function run() {
+    const a = findAbstract();
+    return { abstract: cut(a.text), abstractSource: a.source, conclusion: cut(findConclusion(a.text)) };
+  }
+
+  // Pages built by scripts may still be filling in the article. If little was found and the
+  // page is still changing or nearly empty, wait for it to settle (at most 2.5 s) and try again.
+  let found = run();
+  const bodyLen = () => (document.body ? document.body.innerText.length : 0);
+  if ((!found.conclusion && !/^page/.test(found.abstractSource) || !found.abstract) && (bodyLen() < 2000 || document.readyState !== 'complete')) {
+    await new Promise((resolve) => {
+      let timer = setTimeout(done, 700);
+      const stop = setTimeout(done, 2500);
+      const obs = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(done, 500); });
+      obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+      function done() { obs.disconnect(); clearTimeout(timer); clearTimeout(stop); resolve(); }
+    });
+    const again = run();
+    if ((again.abstract && !found.abstract) || (again.conclusion && !found.conclusion) || again.abstractSource === 'page') found = again;
+    info.title = meta('citation_title', 'dc.title', 'og:title', 'twitter:title') || oneLine(document.title) || info.title;
+  }
+  Object.assign(info, found);
   return info;
 }
 

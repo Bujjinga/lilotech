@@ -1,0 +1,36 @@
+{
+  "elsevier.pdf": {
+    "doi": "10.1016/j.scitotenv.2023.169001",
+    "title": "Microplastic transport in tidal estuaries: a field and modelling study",
+    "year": "2023",
+    "abstract": { "starts": "Estuaries are thought to be major pathways", "includes": ["net export to the coastal ocean."], "excludes": ["Keywords", "Article history", "Received", "Microplastics Estuary Tides"] },
+    "conclusion": { "starts": "Tidal estuaries act as filters", "includes": ["Monitoring programmes should therefore sample"], "excludes": ["Science of the Total Environment 912", "CRediT", "competing interest"] }
+  },
+  "ieee.pdf": {
+    "title": "Federated Learning for Low-Power Edge Devices",
+    "abstract": { "starts": "Federated learning lets devices train", "includes": ["three benchmark datasets."], "excludes": ["Index Terms", "INTRODUCTION"] },
+    "conclusion": { "starts": "We showed that aggressive update compression", "includes": ["real hardware."], "excludes": ["McMahan", "REFERENCES"] }
+  },
+  "wiley.pdf": {
+    "doi": "10.1111/ped.14567",
+    "title": "Early skin-to-skin contact and neonatal outcomes: a randomized trial",
+    "abstract": { "starts": "Background:", "includes": ["Methods:", "Results:", "Conclusions: Immediate skin-to-skin contact sharply reduced"], "excludes": ["Key words", "INTRODUCTION"] },
+    "conclusion": { "starts": "Immediate skin-to-skin contact is a cheap", "includes": ["routine care in Bangladeshi hospitals."], "excludes": ["midwives", "wileyonlinelibrary", "Pediatr Int"] }
+  },
+  "springer.pdf": {
+    "doi": "10.1007/s10533-022-00956-2",
+    "title": "Soil carbon accumulation after afforestation of former croplands",
+    "year": "2022",
+    "abstract": { "starts": "Afforestation is promoted as a climate solution", "includes": ["did not change."], "excludes": ["Keywords", "Summary statistics"] },
+    "conclusion": { "starts": "Afforestation of croplands increases topsoil carbon", "includes": ["direct measurements."], "excludes": ["foresters"] }
+  },
+  "thesis.pdf": {
+    "title": "MOBILE BANKING ADOPTION AMONG RURAL WOMEN IN BANGLADESH",
+    "abstract": { "starts": "Mobile banking can widen financial inclusion", "excludes": ["Introduction"] },
+    "conclusion": { "starts": "Closing the gender gap in mobile banking", "excludes": ["questionnaire"] }
+  },
+  "rg-paper.pdf": {
+    "abstract": { "starts": "Neonatal intensive care units generate" },
+    "conclusion": { "starts": "Label-free clustering found clinically meaningful", "excludes": ["Doe J"] }
+  }
+}
