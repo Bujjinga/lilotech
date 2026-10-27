@@ -1,6 +1,6 @@
 # Lilotech
 
-**Version 1.1.0**
+**Version 1.1.1**
 
 A Chrome extension that saves what you read for research:
 
@@ -15,10 +15,11 @@ Everything is kept in your own Chrome on your computer. Nothing is uploaded anyw
 
 | Version | What's new |
 |---|---|
-| **1.1.0** (current) | Save PDFs, both ones open in Chrome and ones on your computer (**Add a PDF**) |
+| **1.1.1** (current) | Finds abstracts and conclusions more reliably on journal sites, ResearchGate, blogs and PDFs |
+| **1.1.0** | Save PDFs, both ones open in Chrome and ones on your computer (**Add a PDF**) |
 | **1.0.0** | First release: APA 7 references, abstracts, conclusions, highlights, library and exports |
 
-Full details are in [CHANGELOG.md](CHANGELOG.md). Each version is tagged in Git (`v1.0.0`, `v1.1.0`).
+Full details are in [CHANGELOG.md](CHANGELOG.md). Each version is tagged in Git (`v1.0.0`, `v1.1.0`, `v1.1.1`).
 
 ## Get the code
 
@@ -100,6 +101,7 @@ Click **My library** in the popup (or right-click the Lilotech icon and pick **O
 ## Good to know
 
 - Journal pages (Nature, Springer, Elsevier, PLOS, Wiley, MDPI, PubMed Central, arXiv and most others) give the best results, because they include citation details in the page.
+- When a page shows only the abstract (ResearchGate, arXiv, many repositories) but links to the paper's PDF, the popup reads the conclusion from that PDF. You'll see "Looking in the paper's PDF…" under the Conclusion box for a few seconds.
 - For news sites and blogs, Lilotech saves them as web pages and uses the article's summary when there's no real abstract.
 - PDFs work best when they print a DOI on the first page, as most journal PDFs do. Without one, Lilotech searches Crossref by the title and only uses a result whose title clearly matches. Scanned PDFs (pictures of pages, with no selectable text) can't be read.
 - For a PDF on your Mac opened in Chrome (a `file://` address), use **Add a PDF** in the library instead.

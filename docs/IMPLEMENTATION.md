@@ -61,6 +61,8 @@ lilotech/
 ├── icons/               Toolbar and store icons (16, 32, 48, 128 px)
 ├── vendor/pdfjs/        pdf.min.mjs, pdf.worker.min.mjs, LICENSE, VERSION
 ├── docs/                This document
+├── tests/               Automated tests and sample pages (not needed by Chrome)
+├── package.json         Test setup (npm test)
 └── README.md            Install and usage guide
 ```
 
@@ -112,6 +114,8 @@ saveItem(ref, fields) → formatAPA(ref) + formatInText(ref) → chrome.storage.
 
 `extractPage()` in `lib.js` is injected into the tab with `chrome.scripting.executeScript({ func: extractPage })`. Because Chrome serialises the function and runs it inside the page, **it must not use anything defined outside itself**. All of its helpers are declared inside it.
 
+The function is `async`. If it finds little and the page is short or still loading, which is typical of journal sites built as single-page apps, it watches the page with a `MutationObserver`. Once the page stops changing for 0.5 s, or after 2.5 s at most, it tries again.
+
 ### 5.1 Metadata sources, in priority order
 
 | Field | Sources tried |
@@ -134,33 +138,49 @@ saveItem(ref, fields) → formatAPA(ref) + formatInText(ref) → chrome.storage.
 
 Tried in this order, stopping at the first success:
 
-1. Meta tags `citation_abstract`, `dc.description`, `dcterms.abstract` (only if longer than 150 characters).
-2. Common abstract containers: `[role="doc-abstract"]`, `#abstract`, `#Abs1`, `.abstract`, `section.abstract`, `[class*="abstract" i]` and others. The leading word "Abstract" is stripped.
-3. A heading that says "Abstract", "Summary", "Key points" or "Highlights", followed by its section text (see 5.4).
-4. JSON-LD `abstract`.
-5. As a last resort, the page's `description` / `og:description`, marked as *"page description (not a formal abstract)"* so the user knows.
+1. **Meta tags** `citation_abstract`, `dc.description`, `dcterms.abstract`. These are used only if they're longer than 150 characters, and HTML tags are stripped.
+2. **An "Abstract" heading**, followed by its section text (see 5.4).
+   - This comes before the container search because many sites put other blocks in abstract-like containers first: ScienceDirect's *Highlights* and *Graphical abstract*, Wiley's *Plain Language Summary* and *Key Points*, IEEE's "Published in" details.
+   - Collection stops at a "Keywords" or "Index terms" line.
+3. **Common abstract containers**, visible ones first.
+   - Examples: `[role="doc-abstract"]`, `[itemprop="abstract"]`, `#abstract`, `#Abs1-content`, `.abstract-text`, `div.abstract.author`, `section.abstract`, ResearchGate's `[itemprop="description"]`, arXiv's `.ltx_abstract`, then any `[class*="abstract" i]`.
+   - Containers whose class, id or first heading mention *highlights*, *graphical*, *keywords*, *key points* or *plain language* are skipped.
+   - Figures and tables inside are removed.
+4. A **"Summary"** heading, then JSON-LD `abstract` (or `description` on a `ScholarlyArticle`).
+5. As a last resort, the page's `description` / `og:description`, marked as *"page description (not a formal abstract)"*.
+   - Social-media wrappers are removed first. ResearchGate's `PDF | <abstract> | Find, read and cite all the research you need on ResearchGate` becomes just the abstract.
+
+The popup then fills in what's still missing from the paper's PDF (see 6.6).
 
 ### 5.3 Finding the conclusion
 
 The conclusion is found by heading text, using several patterns in order of confidence:
 
-1. `Conclusion(s)`, `Concluding remarks`, `Final thoughts` (with optional numbering like `5.` or `IV.`)
+1. `Conclusion(s)`, `Concluding remarks`, `Final thoughts`, `In conclusion`
 2. `Conclusions and future work`, `Summary and …`
 3. `Discussion and conclusions`, `Implications`
-4. `Summary`, `The bottom line`, `Key takeaways`, `In conclusion`
+4. `Summary`, `The bottom line`, `Key takeaways`
 
-For conclusions, the **last** matching heading on the page is preferred, because conclusions come at the end.
+Headings may carry numbering (`5.`, `5.1`, `IV.`, `5 |`) and a trailing colon (`Conclusion:`).
+
+- The **last** matching heading on the page is preferred, because conclusions come at the end. On PMC, for example, this picks the body's "Conclusions" over the "Conclusions" sub-heading inside a structured abstract.
+- Visible headings win over hidden ones, but hidden ones (closed tabs) are still used when nothing visible matches.
+- If no heading is found, a **structured abstract** is checked for a `Conclusions:` part. This is common on PubMed, which shows no full text.
 
 ### 5.4 Collecting a section's text
 
 `textAfter(heading)`:
 
-- walks the heading's next siblings and collects their text until it reaches a heading of the same or a higher level;
-- skips `script`, `style`, `nav`, `button`, `figure`, `table` and `aside`;
+- walks the heading's next siblings and collects their text until it reaches a heading of the same or a higher level, or a "Keywords" line;
+- skips `script`, `style`, `nav`, `button`, `figure`, `table` and `aside`, plus figure blocks marked by class (Springer's `c-article-section__figure`, MDPI's `html-fig-wrap`, ResearchGate's figure carousel). Figures nested inside a block are removed from a copy before its text is read;
 - if the heading is wrapped in its own `<div>` with no siblings, it moves up one parent and tries again (up to 4 levels), and accepts a whole `<section>` as the container;
 - never climbs into `body`, `main`, `article`, `footer`, `nav` or `header`, so it can't return the whole page.
 
-Headings inside `nav`, `footer` and `aside` are ignored, so a "Summary" link in a site footer is never picked up. Results are capped at 8,000 characters.
+**Pseudo-headings.** Many blogs (Medium, Substack) and some journals (Taylor & Francis) mark headings with a short bold paragraph, `<p><strong>Conclusion</strong></p>`, instead of `<h2>`. These count as headings of the lowest level.
+
+**Ignored areas.** Headings are ignored inside `nav`, `footer`, `aside`, tables of contents, sidebars and widgets, and "similar", "recommended", "related" and "citations" lists. So neither a "Summary" widget in a blog sidebar nor a "Conclusions" link in a table of contents is ever picked up.
+
+Results are capped at 8,000 characters.
 
 ### 5.5 Highlighted text
 
@@ -188,11 +208,11 @@ pdfjsLib.getDocument({ data, isEvalSupported: false, disableFontFace: true })
 
 Three ways are tried, in order:
 
-1. **From inside the tab.** A function injected into the tab runs `fetch(location.href, { credentials: 'include' })`, converts the bytes to base64 and returns them. Because the request comes from the same site, it works for paywalled PDFs the user is signed in to see.
+1. **From inside the tab.** A function injected into the tab runs `fetch(url, { credentials: 'include' })`, converts the bytes to base64 and returns them. Because the request comes from the same site, it works for paywalled PDFs the user is signed in to see.
 2. **Directly from the popup**, which works when the extension already has access to that site.
 3. **Asking for permission.** The popup shows an **Allow** button that calls `chrome.permissions.request({ origins: ['https://site/*'] })` for that one site (declared under `optional_host_permissions`), then tries again.
 
-Every result is checked for the `%PDF` signature before use. PDFs on the computer (`file://`) are added with **Add a PDF** in the library instead, which reads the file with `File.arrayBuffer()`.
+`fetchTabPdf(tab, url)` fetches the PDF open in the tab by default, or any other PDF URL, such as the paper's PDF linked from the page (see 6.6). Every result is checked for the `%PDF` signature before use. PDFs on the computer (`file://`) are added with **Add a PDF** in the library instead, which reads the file with `File.arrayBuffer()`.
 
 ### 6.4 Turning PDF text into lines
 
@@ -204,6 +224,8 @@ pdf.js returns text items with positions. `pageLines()` rebuilds readable lines:
 
 `joinLines()` then removes end-of-line hyphenation (`memo-\nry` becomes `memory`) and joins lines inside a paragraph.
 
+**Running headers and footers** are removed by `dropRunningLines()`. A line is removed when it sits in the top or bottom 10% of a page and its text, with numbers ignored, appears on at least two pages. Lone page numbers there are removed too. Without this, a journal header such as "Science of the Total Environment 912 (2024) 169001" ends up in the middle of a conclusion that crosses a page break.
+
 ### 6.5 What is extracted
 
 Only the first 60 pages are read.
@@ -211,11 +233,22 @@ Only the first 60 pages are read.
 | Field | Method |
 |---|---|
 | **DOI** | XMP `prism:doi` / `dc:identifier`, PDF info fields, then the text of pages 1–2 up to any "References" heading, then the URL |
-| **Title** | The PDF's `Title` field, unless it looks like junk ("Microsoft Word - final.docx", "untitled", a file name). Otherwise the largest-font text on page 1 |
+| **Title** | The PDF's `Title` field, unless it looks like junk ("Microsoft Word - final.docx", "untitled", a file name). Otherwise `guessTitle()` takes the largest text on page 1 that isn't the journal masthead. A masthead is text that also appears in a running header, sits next to "journal homepage" or "Contents lists available", or says "Original article" or similar |
 | **Authors** | The PDF's `Author` field, split on `;`, `and` and `&`. Usually replaced by Crossref |
 | **Year** | A printed year on page 1–3 ("© 2022", "Published: 3 May 2022"). The file's creation date is **not** used, because it is often the download date |
-| **Abstract** | Text after an "Abstract" label (also "Abstract: We…" on the same line), up to Keywords, Introduction, Background, © or similar |
-| **Conclusion** | Text after the **last** "Conclusion(s)" heading, up to References, Acknowledgements, Funding, Appendix, Data availability or similar |
+| **Abstract** | Text after an "Abstract" label, including `Abstract—We…` (IEEE), `Abstract We…` (Springer) and letter-spaced `A B S T R A C T` (Elsevier). It stops at Keywords, Index Terms, a stand-alone "Introduction" or "1 Background" heading, ©, "Received …", or a DOI link. "Background:" *inside* a structured abstract does not stop it. Capped at 4,000 characters, cut at a paragraph break |
+| **Conclusion** | Text after the **last** "Conclusion(s)" heading, numbered in any style (`5.`, `VI.`, `5 \|`). It stops at References, Acknowledgements, Funding, CRediT, Declarations, Ethics, Appendix, Data availability or similar. Falls back to a `Conclusions:` part of a structured abstract |
+
+### 6.6 Filling gaps from the paper's PDF
+
+Many pages show only the abstract: ResearchGate, arXiv abstract pages, repositories and PubMed-style landing pages. When the page has a `citation_pdf_url`, the popup does this after showing the form:
+
+1. It shows "Looking in the paper's PDF…" and fetches the PDF with `fetchTabPdf(tab, pdfUrl)`. This happens from inside the tab, so the user's login applies.
+2. It reads the PDF with `readPdf()`.
+3. It fills the conclusion, and the abstract when it was empty or only a page description, but only into boxes that are still empty. Nothing the user typed is replaced.
+4. It reports what was found.
+
+There is a 30-second time limit. The right-click menus don't do this, because pdf.js can't run in the service worker.
 
 ## 7. Looking up the reference online
 
@@ -414,32 +447,50 @@ The order below is how to rebuild Lilotech, testing after every step.
 
 ## 17. Testing
 
-There is no build system, so the logic is tested in three ways.
+The automated tests live in `tests/`. Running them needs Node.js 18 or newer.
 
-1. **Pure functions in Node.**
-   - `formatAPA`, `formatAuthors`, `parseName` and `formatInText` have no browser dependencies.
-   - Import `lib.js` from a `.mjs` test file, and check edge cases: 1, 2, 20 and 21+ authors, group authors, name particles, no author, no date, web pages with a full date, and article numbers.
-2. **Extraction in a real browser.**
-   - Use Playwright with Chromium: open a page and run `page.evaluate('(' + extractPage.toString() + ')()')`.
-   - Test pages to keep:
-     - a journal article with `citation_*` tags and numbered sections;
-     - a news article with JSON-LD, a "The bottom line" heading and a site footer containing "Summary";
-     - a page whose conclusion heading is wrapped in its own `<div>`;
-     - a small page whose reference list contains a DOI, which must **not** be picked up.
-3. **The whole extension.**
-   - Launch Chromium with `--disable-extensions-except=<folder>` and `--load-extension=<folder>`, using full headless mode (`channel: 'chromium'`).
-   - Open `chrome-extension://<id>/popup.html` and `library.html` as pages, and click through save, edit and every export.
-   - For PDFs, generate sample PDFs from HTML with `page.pdf()`: one with a DOI, a © year and two columns, and one with no DOI. Check the title, DOI, year, abstract and conclusion, plus the **Allow** screen when site access is missing.
+```bash
+npm install                      # installs Playwright (test tool only, not part of the extension)
+npx playwright install chromium  # downloads a test copy of Chromium, once
+npm test                         # runs everything
+npm test -- wiley                # runs only test files whose name contains "wiley"
+```
 
-Before each release, also try real pages by hand: Nature or Springer, Elsevier (ScienceDirect), PLOS, Wiley, MDPI, PubMed Central, arXiv, a news site, a blog, and a few journal PDFs.
+`tests/run.mjs` runs four groups and prints every failure with what was expected and what was found:
+
+1. **APA 7 unit tests** in plain Node: 2 and 21+ authors, particles and hyphens, group authors, journal articles with italics, article numbers, web pages with full dates, no author, no date, and in-text citations.
+2. **Web pages.**
+   - `tests/fixtures/web/*.html` are copies of real publisher page layouts: ScienceDirect, Springer/Nature, Wiley, IEEE Xplore, MDPI, PubMed, PubMed Central, arXiv HTML, Taylor & Francis, ResearchGate (with and without an abstract block), a Medium-style blog, a WordPress blog, a news site, a single-page app that renders late, a page with a hidden "Abstract" tab, and a page with nothing to find.
+   - Each page is opened in Chromium and `extractPage()` is run on it.
+3. **PDFs.**
+   - `tests/fixtures/pdf/*.html` are turned into PDFs with Chromium's print-to-PDF at test time, so no binary files are stored.
+   - They copy real layouts: Elsevier (masthead, letter-spaced headings, article info column, running header, conclusion across a page break), IEEE (`Abstract—`, roman numerals), Wiley (structured abstract, `5 | CONCLUSIONS`, repeated footer), Springer (inline `Abstract`), a thesis with no DOI, and a ResearchGate-hosted paper.
+   - They're read by `readPdf()` inside the real extension.
+4. **The popup, end to end.**
+   - The extension is loaded into Chromium and the popup is pointed at a page.
+   - The test checks that the abstract comes from the page and the conclusion comes from the page or from its linked PDF (ResearchGate).
+
+**Expectations.** Each `expected.json` lists, per file, the DOI, title and year, and for the abstract and conclusion:
+- `starts`: the text it must start with;
+- `includes`: text it must contain;
+- `excludes`: text that must **not** leak in, such as highlights, figure captions, running headers or the next section;
+- `empty: true`: when nothing should be found.
+
+**Adding a case after a bug report:**
+1. Save the page (in Chrome, File → Save Page As → "Webpage, HTML only").
+2. Trim it to the parts that matter and put it in `tests/fixtures/web/`.
+3. Add its expectations to `expected.json` and run `npm test`. It should fail first, then pass after the fix.
+
+Before each release, also try a few live pages by hand: Nature or Springer, ScienceDirect, PLOS, Wiley, MDPI, PubMed, arXiv, ResearchGate, a news site, a blog, and a few journal PDFs.
 
 ## 18. Packaging and releasing
 
-1. Bump `version` in `manifest.json`.
-2. Zip the folder without `.git`, from the folder that contains it:
-   `zip -r Lilotech.zip lilotech -x 'lilotech/.git/*' '*.DS_Store'`
-3. For personal use, share the zip and load it unpacked (see the README).
-4. To publish on the Chrome Web Store:
+1. Bump `version` in `manifest.json` and `package.json`, and add the changes to `CHANGELOG.md`.
+2. Run `npm test` and make sure everything passes.
+3. Zip the folder without the development files, from the folder that contains it:
+   `zip -r Lilotech.zip lilotech -x 'lilotech/.git/*' 'lilotech/node_modules/*' 'lilotech/tests/*' '*.DS_Store'`
+4. For personal use, share the zip and load it unpacked (see the README).
+5. To publish on the Chrome Web Store:
    - register as a developer (one-time fee);
    - zip the **contents** of the folder, so `manifest.json` is at the root of the zip;
    - upload it, and fill in the description, screenshots and a privacy note explaining each permission (section 14).

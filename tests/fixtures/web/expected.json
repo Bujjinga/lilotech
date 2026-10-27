@@ -1,0 +1,77 @@
+{
+  "sciencedirect.html": {
+    "doi": "10.1016/j.scitotenv.2023.169001",
+    "abstract": { "starts": "Estuaries are thought to be major pathways", "excludes": ["Highlights", "Graphical", "sampled at 24 stations across three estuaries over a full year"] },
+    "conclusion": { "starts": "Tidal estuaries act as filters", "includes": ["Monitoring programmes should therefore sample"], "excludes": ["CRediT", "Acknowledgements", "Recommended"] }
+  },
+  "springer.html": {
+    "doi": "10.1007/s10533-022-00956-2",
+    "abstract": { "starts": "Afforestation is promoted as a climate solution", "includes": ["0.4 Mg per hectare"] },
+    "conclusion": { "starts": "Afforestation of croplands increases topsoil carbon", "includes": ["Subsoil carbon should not be counted"], "excludes": ["Full size image", "Data are on Zenodo"] }
+  },
+  "wiley.html": {
+    "doi": "10.1029/2022WR033456",
+    "abstract": { "starts": "Multi‐year droughts reduce groundwater recharge", "excludes": ["Plain Language", "Key Points", "soaks into the ground"] },
+    "conclusion": { "starts": "Groundwater recharge in California collapses", "includes": ["Water managers can plan"], "excludes": ["Funded by NSF"] }
+  },
+  "ieee.html": {
+    "abstract": { "starts": "Federated learning lets devices train a shared model", "includes": ["three benchmark datasets"], "excludes": ["Published in", "Page(s)", "Abstract:"] },
+    "conclusion": { "starts": "We showed that aggressive update compression", "includes": ["Future work will study energy use"], "excludes": ["Thanks", "SECTION"] }
+  },
+  "mdpi.html": {
+    "doi": "10.3390/su15010001",
+    "abstract": { "starts": "Green roofs are promoted to cool cities" },
+    "conclusion": { "starts": "Green roofs cool Dhaka", "includes": ["City planners should combine"], "excludes": ["Conceptualization"] }
+  },
+  "pubmed.html": {
+    "doi": "10.1542/peds.2020-012345",
+    "abstract": { "starts": "Background:", "includes": ["Methods:", "Results:", "Conclusions: Immediate skin-to-skin contact"], "excludes": ["something else entirely"] },
+    "conclusion": { "starts": "Immediate skin-to-skin contact sharply reduced neonatal hypothermia", "excludes": ["something else entirely", "Keywords"] }
+  },
+  "pmc.html": {
+    "doi": "10.1186/s12884-020-02990-0",
+    "abstract": { "starts": "Background", "includes": ["Iron deficiency in pregnancy is common", "Prenatal iron supports child language development"] },
+    "conclusion": { "starts": "Iron supplementation during pregnancy was linked", "excludes": ["IFA", "Abbreviations"] }
+  },
+  "arxiv-html.html": {
+    "abstract": { "starts": "Transformers scale quadratically" },
+    "conclusion": { "starts": "Sparse attention matches dense attention", "includes": ["multimodal inputs"], "excludes": ["Vaswani"] }
+  },
+  "researchgate.html": {
+    "abstract": { "starts": "Neonatal intensive care units generate rich physiological data", "includes": ["within six hours of admission."], "excludes": ["PDF |", "Find, read and cite", "Figure 1"] },
+    "conclusion": { "empty": true }
+  },
+  "researchgate-meta-only.html": {
+    "abstract": { "starts": "Rice yields depend on soil microbial communities", "includes": ["15% yield gain."], "excludes": ["Download Citation", "Find, read and cite", "published Soil microbes"] },
+    "conclusion": { "empty": true }
+  },
+  "tandf.html": {
+    "doi": "10.1080/00220388.2019.1650001",
+    "abstract": { "starts": "Remittances can relax budget constraints", "excludes": ["KEYWORDS", "ABSTRACT"] },
+    "conclusion": { "starts": "Remittances close part of the gender gap", "includes": ["Policies that lower remittance costs"], "excludes": ["conflict of interest"] }
+  },
+  "blog-medium.html": {
+    "abstract": { "starts": "A practical guide to spotting" },
+    "conclusion": { "starts": "Use cross-validation", "includes": ["held-out test set"], "excludes": ["Goodfellow", "Recommended"] }
+  },
+  "blog-wordpress.html": {
+    "abstract": { "starts": "Composting turns kitchen scraps", "excludes": ["Our blog covers"] },
+    "conclusion": { "starts": "Balance greens and browns", "excludes": ["Copyright", "Our blog covers"] }
+  },
+  "spa-late.html": {
+    "abstract": { "starts": "This abstract only appears after the page script runs" },
+    "conclusion": { "starts": "Waiting briefly for the page" }
+  },
+  "hidden-tabs.html": {
+    "abstract": { "starts": "This abstract sits in a tab that is hidden" },
+    "conclusion": { "starts": "Hidden tabs and tables of contents" }
+  },
+  "news.html": {
+    "abstract": { "starts": "Reefs support a quarter of marine life" },
+    "conclusion": { "starts": "Protecting reefs is cheaper" }
+  },
+  "plain.html": {
+    "abstract": { "empty": true },
+    "conclusion": { "empty": true }
+  }
+}

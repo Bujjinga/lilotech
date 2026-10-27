@@ -1,4 +1,4 @@
-import { capturePdf, fetchTabPdf } from './pdfread.js';
+import { capturePdf, fetchTabPdf, readPdf } from './pdfread.js';
 import { capture, getItems, findExisting, saveItem, formatAPA, formatInText, copyRich, toast } from './lib.js';
 
 const $ = (id) => document.getElementById(id);
@@ -45,6 +45,36 @@ async function init() {
 
   $('status').hidden = true;
   $('form').hidden = false;
+
+  // Many pages (ResearchGate, arXiv, repositories) show only the abstract. When the page links
+  // to the paper's PDF, read the missing parts from there.
+  const missing = !$('conclusion').value || !$('abstract').value || /not a formal/.test(data.abstractSource);
+  if (data.page.pdfUrl && !data.page.isPdf && missing) fillFromLinkedPdf(tab, data.page.pdfUrl).catch((e) => console.warn('Linked PDF', e));
+}
+
+async function fillFromLinkedPdf(tab, pdfUrl) {
+  const note = $('pdfNote');
+  note.hidden = false;
+  note.textContent = "Looking in the paper's PDF…";
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 30000));
+  const pdf = await Promise.race([fetchTabPdf(tab, pdfUrl).then((b) => (b ? readPdf(b, pdfUrl) : null)), timeout]);
+  const found = [];
+  // Only fill boxes that are still empty, so nothing the user typed is replaced.
+  if (pdf && pdf.conclusion && !$('conclusion').value.trim()) {
+    $('conclusion').value = pdf.conclusion;
+    data.conclusion = pdf.conclusion;
+    $('conSrc').textContent = '(from the PDF)';
+    found.push('conclusion');
+  }
+  if (pdf && pdf.abstract && (!$('abstract').value.trim() || /not a formal/.test(data.abstractSource))) {
+    $('abstract').value = pdf.abstract;
+    data.abstract = pdf.abstract;
+    data.abstractSource = 'PDF text';
+    $('absSrc').textContent = '(from the PDF)';
+    found.push('abstract');
+  }
+  if (found.length) note.textContent = `Found the ${found.join(' and ')} in the paper's PDF.`;
+  else note.textContent = pdf ? "The paper's PDF didn't have a clear conclusion section." : "Couldn't open the paper's PDF from here.";
 }
 
 // PDFs: download the file and read it with pdf.js.
