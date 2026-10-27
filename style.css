@@ -84,3 +84,58 @@ textarea:focus, input:focus, select:focus { outline: 2px solid var(--soft); bord
   opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10;
 }
 .toast.show { opacity: 1; }
+
+/* ---------------------------------------------------------------- logo and opening animation */
+.logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 750; font-size: 17px; letter-spacing: -0.01em; }
+.logo-mark { width: 26px; height: 26px; flex: none; overflow: visible; }
+.lg-tile { fill: #3d5afe; }
+.lg-left { fill: #ffffff; }
+.lg-right { fill: #e9edff; }
+.lg-lines { fill: none; stroke: #3d5afe; stroke-width: 4; stroke-linecap: round; }
+.lg-ribbon { fill: #ffc21a; }
+.logo-word span { display: inline-block; }
+.logo-sub { font-weight: 500; color: var(--muted); }
+.logo.play .lg-tile { animation: lg-pop .32s cubic-bezier(.3, 1.6, .5, 1) both; transform-origin: 64px 64px; }
+.logo.play .lg-page { animation: lg-open .42s cubic-bezier(.2, .8, .3, 1) .12s both; transform-origin: 64px 70px; }
+.logo.play .lg-lines { stroke-dasharray: 1; animation: lg-write .35s ease-out .45s both; }
+.logo.play .lg-ribbon { animation: lg-drop .45s cubic-bezier(.3, 1.5, .5, 1) .5s both; }
+.logo.play .logo-word span { animation: lg-letter .35s ease-out both; animation-delay: calc(.25s + var(--i) * 45ms); }
+.logo.play .logo-sub { animation: lg-letter .4s ease-out .7s both; }
+@keyframes lg-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes lg-open { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes lg-write { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes lg-drop { from { transform: translateY(-34px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes lg-letter { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+.fade-in { animation: lg-letter .3s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .logo.play *, .fade-in { animation: none !important; }
+}
+
+/* ---------------------------------------------------------------- section chips */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-size: 12px; padding: 3px 10px; border-radius: 99px; line-height: 1.5;
+  border: 1px dashed var(--line); background: transparent; color: var(--muted);
+}
+.chip.on { border-style: solid; border-color: var(--accent); background: var(--soft); color: var(--accent); font-weight: 600; }
+.chip.on::before { content: "✓"; font-size: 11px; }
+.chip-input { width: 140px !important; padding: 3px 10px !important; font-size: 12px; border-radius: 99px !important; }
+
+/* ---------------------------------------------------------------- menus and style picker */
+.menu { position: relative; }
+.menu > summary { list-style: none; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary::after { content: "▾"; font-size: 11px; }
+.menu-list {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; min-width: 250px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .12); display: grid; gap: 2px;
+}
+.menu-list button { border: 0; justify-content: flex-start; width: 100%; }
+.menu-list button:hover { background: var(--soft); }
+.menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
+select.style-pick { width: auto; padding: 5px 8px; font-size: 13px; }
+pre.code {
+  margin: 0; background: var(--soft); border-radius: var(--radius); padding: 10px 12px;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word;
+}

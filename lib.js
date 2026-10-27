@@ -147,8 +147,11 @@ export async function extractPage() {
     if (!el.querySelector || !el.querySelector('figure, table, [role="figure"], [class*="fig" i], [class*="table-wrap" i]')) return el.innerText || '';
     const copy = el.cloneNode(true);
     copy.querySelectorAll('figure, table, [role="figure"], [class*="figure" i], [class*="fig_" i], [class*="fig-" i], [class*="table-wrap" i]').forEach((x) => x.remove());
-    // innerText needs a rendered element; textContent is the fallback for a detached copy.
-    return copy.textContent.replace(/[ \t]*\n[ \t]*/g, '\n');
+    // innerText needs a rendered element; textContent is the fallback for a detached copy,
+    // so mark where paragraphs end first.
+    copy.querySelectorAll('p, li, div, section, blockquote, h1, h2, h3, h4, h5, h6').forEach((x) => x.append('\n\n'));
+    copy.querySelectorAll('br').forEach((x) => x.replaceWith('\n'));
+    return copy.textContent.replace(/[ \t]*\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   }
   const visible = (el) => el.offsetParent !== null || getComputedStyle(el).position === 'fixed';
   function headings() {
@@ -540,9 +543,73 @@ export async function saveItem(ref, fields = {}) {
   item.inText = formatInText(ref);
   item.updatedAt = new Date().toISOString();
   for (const k of ['abstract', 'abstractSource', 'conclusion', 'note']) if (fields[k] !== undefined) item[k] = fields[k];
+  if (Array.isArray(fields.sections)) item.sections = [...new Set(fields.sections)];
   if (fields.snippet && !item.snippets.some((s) => s.text === fields.snippet)) item.snippets.push({ text: fields.snippet, savedAt: new Date().toISOString() });
   await setItems(items);
   return item;
+}
+
+// ---------------------------------------------------------------------------
+// Settings: the citation style and the sections papers can be sorted into.
+// ---------------------------------------------------------------------------
+export const DEFAULT_SECTIONS = [
+  { id: 'introduction', name: 'Introduction' },
+  { id: 'related', name: 'Related work' },
+  { id: 'methods', name: 'Methods' },
+  { id: 'results', name: 'Results' },
+  { id: 'discussion', name: 'Discussion' },
+  { id: 'conclusion', name: 'Conclusion' },
+];
+
+export async function getSettings() {
+  const { settings } = await chrome.storage.local.get('settings');
+  return { style: 'apa', sections: DEFAULT_SECTIONS, ...(settings || {}) };
+}
+
+export async function setSettings(patch) {
+  const settings = { ...(await getSettings()), ...patch };
+  await chrome.storage.local.set({ settings });
+  return settings;
+}
+
+export function newSectionId(name, sections) {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
+  let id = base;
+  for (let i = 2; sections.some((s) => s.id === id); i++) id = `${base}-${i}`;
+  return id;
+}
+
+// ---------------------------------------------------------------------------
+// Paper links typed or pasted by the user: a DOI, a doi.org link, an arXiv ID or link,
+// a PDF link, or any web address.
+// ---------------------------------------------------------------------------
+export function parseLink(input) {
+  let s = (input || '').trim().replace(/^<|>$/g, '');
+  if (!s) return null;
+  const arxivId = '(\\d{4}\\.\\d{4,5}|[a-z-]+(?:\\.[A-Z]{2})?\\/\\d{7})(v\\d+)?';
+  let m = s.match(new RegExp(`^(?:arxiv:\\s*)?${arxivId}$`, 'i')) || s.match(new RegExp(`arxiv\\.org\\/(?:abs|pdf|html)\\/${arxivId}`, 'i'));
+  if (m) {
+    const id = m[1];
+    return { kind: 'arxiv', id, doi: `10.48550/arXiv.${id}`, url: `https://arxiv.org/abs/${id}${m[2] || ''}`, pdfUrl: `https://arxiv.org/pdf/${id}${m[2] || ''}` };
+  }
+  let plain = s;
+  try { plain = decodeURIComponent(s); } catch (e) { /* keep as typed */ }
+  m = plain.match(/^(?:doi:\s*)?(10\.\d{4,9}\/\S+)$/i) || plain.match(/^https?:\/\/(?:dx\.)?doi\.org\/(10\.\d{4,9}\/\S+)$/i);
+  if (m) {
+    const doi = m[1].replace(/[.,;]$/, '');
+    return { kind: 'doi', doi, url: `https://doi.org/${doi}` };
+  }
+  if (!/^https?:\/\//i.test(s)) {
+    if (/^[\w-]+(\.[\w-]+)+(\/|$)/.test(s)) s = 'https://' + s;
+    else return null;
+  }
+  let url;
+  try { url = new URL(s).href; } catch (e) { return null; }
+  // A DOI inside a publisher link, e.g. https://onlinelibrary.wiley.com/doi/10.1029/2022WR033456
+  const inner = decodeURIComponent(url).match(/\/doi\/(?:abs\/|full\/|pdf\/|epdf\/)?(10\.\d{4,9}\/[^?#\s]+)/i);
+  const doi = inner ? inner[1].replace(/\.pdf$/i, '') : '';
+  if (/\.pdf($|[?#])/i.test(url)) return { kind: 'pdf', url, pdfUrl: url, doi };
+  return { kind: 'url', url, doi };
 }
 
 // ---------------------------------------------------------------------------

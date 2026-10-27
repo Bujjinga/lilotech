@@ -2,6 +2,24 @@
 
 All notable changes to Lilotech. Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
+## [1.2.0] - 2026-10-27
+
+### Added
+- **More citation styles:** MLA 9, Chicago (author-date), Harvard, IEEE and Vancouver, alongside APA 7. Pick a style in the popup or the library; it is remembered, and copying, in-text citations and downloads use it. IEEE and Vancouver are numbered in the order papers were saved.
+- **BibTeX and RIS:** download a `.bib` file for LaTeX and Overleaf, or a `.ris` file for Zotero, Mendeley and EndNote. Sections are exported as RIS keywords.
+- **Sections:** put each paper into one or more sections of the paper you're writing (Introduction, Related work, Methods, Results, Discussion, Conclusion, or your own). The library has a sidebar with each section and its count, plus "Unsorted". Downloads cover the section you're viewing, and Word and Markdown notes are grouped by section.
+- **Add by link:** paste a DOI, `doi.org` link, arXiv ID or link, PDF link or any article address in the library (or click **Add by link** in the popup). Lilotech reads the page in a background tab, and fills a missing conclusion from the paper's PDF.
+- **Opening animation:** the logo's book opens and its bookmark drops in when the popup or library opens. It is turned off when the computer is set to reduce motion.
+- Tests for the citation styles, link parsing, sections, exports and adding by link (259 checks in all).
+
+### Changed
+- The popup is wider (600 px), with the abstract and conclusion side by side.
+- The library has a new layout: an add bar at the top, a sections sidebar, and an **Export** menu.
+- Backups now include your sections and citation style.
+
+### Fixed
+- Paragraphs in a conclusion no longer run together when a figure sits between them ("thirty years.Subsoil").
+
 ## [1.1.1] - 2026-10-27
 
 ### Fixed
@@ -67,6 +85,7 @@ All notable changes to Lilotech. Versions follow [semantic versioning](https://s
   - backup and restore as JSON.
 - Light and dark mode, and the Option+Shift+L keyboard shortcut.
 
+[1.2.0]: https://github.com/Bujjinga/lilotech/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/Bujjinga/lilotech/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Bujjinga/lilotech/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Bujjinga/lilotech/releases/tag/v1.0.0

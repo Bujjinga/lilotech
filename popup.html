@@ -5,47 +5,70 @@
   <title>Lilotech</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    body { width: 440px; padding: 14px 16px 16px; }
-    header { display: flex; align-items: center; margin-bottom: 10px; }
-    #status { margin: 30px 0; text-align: center; }
-    #form[hidden], #status[hidden] { display: none; }
-    .title { font-weight: 650; font-size: 15px; margin: 4px 0 8px; }
+    body { width: 600px; padding: 14px 18px 16px; }
+    header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    #status { margin: 26px 0 30px; text-align: center; }
+    #status .logo { flex-direction: column; gap: 10px; font-size: 22px; margin-bottom: 12px; }
+    #status .logo-mark { width: 64px; height: 64px; }
+    #form[hidden], #status[hidden], #linkRow[hidden] { display: none; }
+    .title { font-weight: 650; font-size: 16px; margin: 4px 0 10px; }
     .badge { font-size: 11px; background: var(--soft); color: var(--accent); padding: 1px 7px; border-radius: 99px; font-weight: 600; }
-    textarea { min-height: 80px; max-height: 200px; }
+    .ref-head { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; }
+    .ref-head label { margin: 0; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    textarea { min-height: 120px; max-height: 220px; }
+    #linkRow { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 10px; }
     footer { margin-top: 14px; }
     .saved { color: var(--ok); font-weight: 600; }
   </style>
 </head>
 <body>
   <header>
-    <div class="brand"><img src="icons/icon48.png" alt="">Lilotech</div>
+    <div id="logo"></div>
     <span class="spacer"></span>
+    <button id="byLink" title="Save a paper from a link, DOI or arXiv ID">Add by link</button>
     <button id="openLib" title="See everything you've saved">My library</button>
   </header>
 
-  <div id="status" class="muted">Reading this page…</div>
+  <form id="linkRow" hidden>
+    <input type="text" inputmode="url" autocomplete="off" spellcheck="false" id="link" placeholder="Paste a paper link, DOI or arXiv ID" aria-label="Paper link">
+    <button class="primary">Add</button>
+  </form>
+
+  <div id="status"><div id="bigLogo"></div><div id="statusText" class="muted">Reading this page…</div></div>
 
   <div id="form" hidden>
     <div class="row"><span id="kind" class="badge"></span><span id="already" class="small muted"></span></div>
     <div class="title" id="title"></div>
 
-    <label>APA 7 reference</label>
+    <div class="ref-head">
+      <label for="style">Reference</label>
+      <select id="style" class="style-pick" aria-label="Citation style"></select>
+    </div>
     <div class="apa" id="apa"></div>
     <div class="row" style="margin-top:6px">
       <button id="copyApa">Copy reference</button>
       <span class="small muted" id="inText"></span>
     </div>
 
-    <label for="abstract">Abstract <span class="hint" id="absSrc"></span></label>
-    <textarea id="abstract" placeholder="No abstract found. Paste it here, or highlight it on the page, right-click, and choose “Save highlight as the Abstract”."></textarea>
+    <label>Sections <span class="hint">(where will you use this paper?)</span></label>
+    <div class="chips" id="sections"></div>
 
-    <label for="conclusion">Conclusion <span class="hint" id="conSrc"></span></label>
-    <div id="pdfNote" class="small muted" hidden></div>
-    <textarea id="conclusion" placeholder="No conclusion found. Paste it here, or highlight it on the page, right-click, and choose “Save highlight as the Conclusion”."></textarea>
+    <div class="two">
+      <div>
+        <label for="abstract">Abstract <span class="hint" id="absSrc"></span></label>
+        <textarea id="abstract" placeholder="No abstract found. Paste it here, or highlight it on the page, right-click, and choose “Save highlight as the Abstract”."></textarea>
+      </div>
+      <div>
+        <label for="conclusion">Conclusion <span class="hint" id="conSrc"></span></label>
+        <div id="pdfNote" class="small muted" hidden></div>
+        <textarea id="conclusion" placeholder="No conclusion found. Paste it here, or highlight it on the page, right-click, and choose “Save highlight as the Conclusion”."></textarea>
+      </div>
+    </div>
 
     <div id="snipWrap" hidden>
       <label for="snippet">Your highlight</label>
-      <textarea id="snippet"></textarea>
+      <textarea id="snippet" style="min-height:60px"></textarea>
     </div>
 
     <label for="note">My note <span class="hint">(optional)</span></label>

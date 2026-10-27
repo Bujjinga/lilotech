@@ -7,7 +7,7 @@
   "springer.html": {
     "doi": "10.1007/s10533-022-00956-2",
     "abstract": { "starts": "Afforestation is promoted as a climate solution", "includes": ["0.4 Mg per hectare"] },
-    "conclusion": { "starts": "Afforestation of croplands increases topsoil carbon", "includes": ["Subsoil carbon should not be counted"], "excludes": ["Full size image", "Data are on Zenodo"] }
+    "conclusion": { "starts": "Afforestation of croplands increases topsoil carbon", "includes": ["Subsoil carbon should not be counted", "thirty years.\n\nSubsoil carbon"], "excludes": ["Full size image", "Data are on Zenodo"] }
   },
   "wiley.html": {
     "doi": "10.1029/2022WR033456",

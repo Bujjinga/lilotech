@@ -53,8 +53,12 @@ Lilotech is a Chrome extension for research reading. On any article, paper or PD
 lilotech/
 ├── manifest.json        Extension settings: name, permissions, popup, service worker
 ├── background.js        Service worker: right-click menus and saving from them
-├── lib.js               Shared logic: page extraction, lookups, APA 7, storage, clipboard
+├── lib.js               Shared logic: page extraction, lookups, APA 7, storage, settings, links, clipboard
+├── styles.js            Citation styles: MLA, Chicago, Harvard, IEEE, Vancouver, BibTeX, RIS
 ├── pdfread.js           PDF reading with pdf.js (used by popup and library)
+├── addlink.js           Saving a paper from a link, DOI or arXiv ID (used by the library)
+├── chips.js             Section chips shared by the popup and library
+├── logo.js              The animated logo (inline SVG)
 ├── popup.html / .js     The window that opens when you click the toolbar icon
 ├── library.html / .js   The full-page library (search, edit, export)
 ├── style.css            Shared styles, light and dark mode
@@ -108,6 +112,14 @@ finishCapture(page)
   → returns { page, ref, abstract, abstractSource, conclusion, selection }
 
 saveItem(ref, fields) → formatAPA(ref) + formatInText(ref) → chrome.storage.local
+
+readLink(text)                    (library: "Add paper")
+  → parseLink(text)               DOI, arXiv, PDF link or web address
+  → background tab → extractPage() → finishCapture(page)   or   PDF → capturePdf(bytes)
+  → DOI only: finishCapture({ doi })
+  → missing conclusion: readPdf(the paper's PDF)
+
+cite(item, style, n) → the reference in any style, built from item.ref when it is shown or exported
 ```
 
 ## 5. Reading a web page
@@ -317,6 +329,30 @@ Initials keep hyphens: "Marie-Claire" becomes "M.-C.". Group authors are written
 
 `(Smith, 2021)`, `(Smith & Lee, 2021)`, `(Smith et al., 2021)`. With no author, the first words of the title in quotes are used.
 
+### 9.4 Other citation styles (`styles.js`)
+
+APA stays in `lib.js`, because the saved `apa` text is used for search and duplicates. Every other style is built on demand from the same reference object, so changing the style never changes what is stored.
+
+`STYLES` maps a key to `{ label, format(ref, n, item), inText(ref, n), sort, code }`:
+
+| Key | Style | Reference list order | Example |
+|---|---|---|---|
+| `apa` | APA 7 | A–Z | Smith, J. A., Lee, K., & García, M. (2021). Title. *Journal*, *2*(3), 45–67. https://doi.org/… |
+| `mla` | MLA 9 | A–Z | Smith, John Andrew, et al. “Title.” *Journal*, vol. 2, no. 3, 2021, pp. 45–67, https://doi.org/…. |
+| `chicago` | Chicago author-date | A–Z | Smith, John Andrew, Kim Lee, and María García. 2021. “Title.” *Journal* 2 (3): 45–67. https://doi.org/…. |
+| `harvard` | Harvard (Cite Them Right) | A–Z | Smith, J.A., Lee, K. and García, M. (2021) ‘Title’, *Journal*, 2(3), pp. 45–67. Available at: https://doi.org/…. |
+| `ieee` | IEEE | numbered | [1] J. A. Smith, K. Lee, and M. García, “Title,” *Journal*, vol. 2, no. 3, pp. 45–67, Mar. 2021, doi: …. |
+| `vancouver` | Vancouver | numbered | 1. Smith JA, Lee K, García M. Title. Journal. 2021 Mar;2(3):45-67. doi:… |
+| `bibtex` | BibTeX | A–Z | `@article{smith2021title, author = {Smith, John Andrew and …}, …}` |
+| `ris` | RIS | A–Z | `TY  - JOUR`, `AU  - …`, …, `ER  - ` |
+
+- A small builder keeps the plain-text and HTML (`<i>`) versions in step, so every style copies with italics.
+- With no author, Chicago and Harvard move the title to the front; MLA starts with the title in quotes.
+- Numbered styles take `n`, the paper's position in the reference list. The library numbers papers in the order they were saved (oldest first) within the section being viewed.
+- BibTeX keys are `familyYEARfirstword` (`smith2021climate`), with accents removed. Special LaTeX characters (`& % $ # _ { } ~ ^ \`) are escaped, and titles are wrapped in double braces to keep their capitals. The `.bib` download adds `a`, `b`, … to repeated keys.
+- RIS puts the abstract in `AB`, the conclusion and note in `N1`, and each section name in `KW`, so sections arrive in Zotero, Mendeley and EndNote as tags.
+- `cite(item, style, n)` keeps a hand-edited APA reference (`apaEdited`) as written; other styles are always rebuilt from `item.ref`.
+
 ## 10. Saving: storage and data model
 
 All items are stored as one array under the key `items` in `chrome.storage.local`:
@@ -331,9 +367,23 @@ All items are stored as one array under the key `items` in `chrome.storage.local
   abstract: '', abstractSource: 'page' | 'page metadata' | 'Crossref' | 'PDF text' | 'your highlight' | …,
   conclusion: '',
   snippets: [{ text: 'highlighted text', savedAt: 'ISO date' }],
-  note: ''
+  note: '',
+  sections: ['related', 'introduction']   // section ids, see below
 }
 ```
+
+Settings live under the key `settings` (`getSettings` / `setSettings` in `lib.js`):
+
+```js
+{
+  style: 'apa',                 // a key of STYLES
+  sections: [{ id: 'introduction', name: 'Introduction' }, { id: 'related', name: 'Related work' }, …]
+}
+```
+
+- The six default sections are Introduction, Related work, Methods, Results, Discussion and Conclusion. New ones get an id made from their name (`newSectionId`), with `-2`, `-3` added if needed.
+- Deleting a section removes its id from every item; the papers stay.
+- `saveItem` only changes `sections` when it is given an array, so right-click saves never touch them.
 
 - **Duplicate detection (`findExisting`).** The same DOI, or the same URL (ignoring `#…` and a trailing `/`), or the same title for local PDFs with no DOI or URL. A match updates the existing item instead of adding a new one.
 - **Manual edits win.** If the user edited the reference text in the library (`apaEdited: true`), later saves never overwrite it. Right-click saves only fill an abstract or conclusion that is empty.
@@ -347,7 +397,14 @@ All items are stored as one array under the key `items` in `chrome.storage.local
 2. runs `capture(tab)`, or the PDF path when the tab is a PDF;
 3. shows the type badge, title, formatted reference, in-text citation, and editable boxes for the abstract, conclusion, highlight and note;
 4. if the item already exists, pre-fills the saved values and changes the button to **Update in library**;
-5. on **Save**, calls `saveItem(ref, fields)`.
+5. on **Save**, calls `saveItem(ref, fields)`, including the ticked sections.
+
+The popup is 600 px wide (Chrome allows up to 800 × 600), with the abstract and conclusion side by side.
+
+- **Citation style.** A menu next to the reference lists `STYLES`. Changing it calls `setSettings({ style })` and redraws the reference and in-text citation with `cite()` and `inTextFor()`. For numbered styles the popup uses the number the paper has, or will have, in the library.
+- **Sections.** `mountChips()` in `chips.js` draws one toggle per section and a **+ New section** chip that turns into a text box.
+- **Add by link.** The button shows a box for a link. On submit, the popup asks for permission to read websites while the click still counts as a user gesture (`chrome.permissions.request` must be called from one), then opens `library.html?add=<link>`. The library does the reading, because the popup closes as soon as a tab opens.
+- **Opening animation.** See section 13.3.
 
 **Copy reference** uses `navigator.clipboard.write` with both `text/html` and `text/plain` (`copyRich` in `lib.js`), so the italics survive pasting into Word.
 
@@ -371,10 +428,16 @@ On success the toolbar icon briefly shows a green **✓** badge (`chrome.action.
 
 `library.html` + `library.js`, opened as a normal tab at `chrome-extension://<id>/library.html`.
 
+**Layout**
+- Header: the animated logo, the count, and the **Citation style** menu.
+- Add bar: a box for a link, DOI or arXiv ID, **Add paper**, and **Add a PDF**.
+- Left sidebar: All papers, each section, and Unsorted, each with a count, plus a box to make a new section. The chosen section is remembered in `localStorage`. On narrow windows the sidebar moves above the list.
+- Main column: the section's name, search, sort and an **Export** menu (a `<details>` element styled as a drop-down).
+
 **Display**
-- Cards show the reference with a hanging indent, the in-text citation, the saved date, and collapsible Abstract, Conclusion, Highlights and Note sections.
-- **Search** filters across the reference, abstract, conclusion, highlights and note.
-- **Sort** by newest first, or A–Z (APA reference-list order).
+- Cards show the reference in the chosen style (BibTeX and RIS in a monospace block), the in-text citation, the saved date, the section chips, and collapsible Abstract, Conclusion, Highlights and Note sections. Clicking a chip adds the paper to that section or takes it out.
+- **Search** filters across the reference, title, abstract, conclusion, highlights, note and section names.
+- **Sort** by newest first, or reference-list order for the chosen style (A–Z, or numbered oldest first).
 - The page re-renders automatically when storage changes (`chrome.storage.onChanged`), for example when something is saved from another tab.
 
 **Item actions**
@@ -386,17 +449,62 @@ On success the toolbar icon briefly shows a green **✓** badge (`chrome.action.
 
 **Library actions**
 
+Every export covers the section being viewed, in reference-list order for the chosen style, and the file name includes the section's name.
+
 | Button | Output |
 |---|---|
+| Add paper | Reads a link, DOI or arXiv ID (section 13.2) → `saveItem` |
 | Add a PDF | Picks one or more PDFs → `capturePdf` → `saveItem` |
-| Copy all references | All references A–Z, as rich text with hanging indents |
-| Download for Word | A `.doc` (HTML that Word opens): Times New Roman 12 pt, double-spaced, 0.5″ hanging indent; a "References" page, then "Reading notes" |
-| Download notes (.md) | Markdown with `*italics*`; reference list plus notes per source |
-| Download spreadsheet (.csv) | One row per source; UTF-8 with BOM so Excel shows accents correctly |
-| Backup | JSON file of the whole library |
-| Restore | Merges a backup file, adding only items whose `id` isn't already present |
+| Copy all references | References in the chosen style, as rich text with hanging indents |
+| Download for Word | A `.doc` (HTML that Word opens): Times New Roman 12 pt, double-spaced, 0.5″ hanging indent (none for numbered styles); a "References" page, then "Reading notes", grouped by section when viewing All papers. BibTeX and RIS fall back to APA here |
+| Download notes (.md) | Markdown with `*italics*`; reference list plus notes per source, grouped by section like the Word file |
+| Download BibTeX (.bib) | One entry per source, with unique keys |
+| Download for Zotero, Mendeley, EndNote (.ris) | One record per source; sections become keywords |
+| Download spreadsheet (.csv) | One row per source, including a Sections column; UTF-8 with BOM so Excel shows accents correctly |
+| Backup library | JSON file of the whole library and the settings (`version: 2`) |
+| Restore from backup | Merges a backup file, adding only items whose `id` isn't already present, and any custom sections they use |
+
+Papers added with **Add paper** or **Add a PDF** while a section is selected go into that section.
 
 Files are downloaded with a `Blob`, `URL.createObjectURL` and a temporary `<a download>`.
+
+### 13.1 Sections
+
+The sidebar and the chips both read `settings.sections`. An item belongs to a section when the section's id is in `item.sections`; ids of deleted sections are ignored. "Unsorted" is every item with no current section. When All papers is viewed and at least one paper is in a section, the Word and Markdown notes have one heading per section (in sidebar order) and then Unsorted; a paper in two sections appears under both.
+
+### 13.2 Add by link (`addlink.js`)
+
+`parseLink(text)` in `lib.js` recognises, in this order:
+
+| Input | Result |
+|---|---|
+| `2401.01234`, `arXiv:2401.01234v2`, `hep-th/9901001`, `arxiv.org/abs/…`, `arxiv.org/pdf/…` | `arxiv`, with DOI `10.48550/arXiv.<id>`, the abstract page and the PDF link |
+| `10.xxxx/…`, `doi:10.xxxx/…`, `https://doi.org/…` (also URL-encoded) | `doi` |
+| A link ending in `.pdf` | `pdf` |
+| Any other `http(s)` link, or `www.…` | `url`; a DOI inside a publisher link (`/doi/10.…`) is kept as a hint |
+
+`readLink(text)`:
+
+1. For a PDF link, downloads it and runs `capturePdf`.
+2. For anything else, opens the link in a background tab (`chrome.tabs.create({ active: false })`), waits for it to finish loading (at most 30 seconds), runs `extractPage()` in it, and closes it. A `doi.org` link ends up on the publisher's page, so the abstract and conclusion come from there. If the tab turns out to be a PDF, it is read with pdf.js instead.
+3. If that found nothing (no permission, or the page failed) but there is a DOI, `finishCapture({ doi })` still gets the reference from Crossref or DataCite, and often the abstract.
+4. If the conclusion is missing and the page links to its PDF (or it's arXiv), reads it from the PDF, as in section 6.6.
+
+Reading another site needs host permission. **Add paper** calls `chrome.permissions.request({ origins: ['https://*/*', 'http://*/*'] })` directly in the click handler, because Chrome only shows the prompt during a user gesture. Chrome asks once; after that it answers straight away. Saving an existing paper again only fills empty fields and keeps its sections.
+
+### 13.3 Logo animation (`logo.js`)
+
+The logo is inline SVG so its parts can move: a blue tile, two page shapes, the text lines and the yellow bookmark. `mountLogo(el)` inserts it (with the word "Lilotech" as one `<span>` per letter), and `replayLogo(el)` adds the `play` class, which starts these CSS animations in `style.css`:
+
+| Part | Animation | Time |
+|---|---|---|
+| Tile | scales up from 60% with a small overshoot | 0–0.32 s |
+| Pages | open from the spine (`scaleX` 0 → 1, `transform-origin` at the spine) | 0.12–0.54 s |
+| Text lines | are "written" with `stroke-dashoffset` (the path has `pathLength="1"`) | 0.45–0.8 s |
+| Bookmark | drops in from above with a bounce | 0.5–0.95 s |
+| Letters | rise and fade in one after another, 45 ms apart | 0.25–0.9 s |
+
+The popup shows a large logo while it reads the page, and the small one in the header. The library plays it on load and again after adding a paper. Under `prefers-reduced-motion: reduce` all of it is switched off.
 
 ## 14. Permissions and privacy
 
@@ -407,7 +515,7 @@ Files are downloaded with a `Blob`, `URL.createObjectURL` and a temporary `<a do
 | `storage`, `unlimitedStorage` | Keep the library locally, with no size limit |
 | `contextMenus` | The right-click menu items |
 | `host_permissions`: `api.crossref.org`, `api.datacite.org` | Call the two lookup services |
-| `optional_host_permissions`: `https://*/*`, `http://*/*` | Asked for **one site at a time**, only when a PDF from that site can't be read otherwise |
+| `optional_host_permissions`: `https://*/*`, `http://*/*` | Asked for **one site at a time** when a PDF from that site can't be read otherwise, or for **all sites** the first time the user adds a paper by link (so Lilotech can open and read the link) |
 
 - No data leaves the computer except the DOI or title sent to Crossref or DataCite.
 - PDFs are parsed locally.
@@ -434,6 +542,10 @@ The order below is how to rebuild Lilotech, testing after every step.
     - Add `fetchTabPdf()`, the **Allow** flow with `optional_host_permissions`, and **Add a PDF** in the library.
 12. **Fallbacks.** Add the DataCite lookup and the strict Crossref title search (section 7).
 13. **Polish.** Icons (16/32/48/128 px PNG), dark mode in `style.css`, the keyboard shortcut, and empty-state messages.
+14. **Citation styles.** Write `styles.js` (section 9.4) as pure functions and test them in Node. Add `getSettings`/`setSettings`, a style menu in the popup and library, and the `.bib` and `.ris` downloads.
+15. **Sections.** Add `sections` to items and settings (section 10), the chips (`chips.js`), the library sidebar and the grouped exports (section 13.1).
+16. **Add by link.** Write `parseLink` and test it in Node, then `addlink.js` (section 13.2) and the add bar.
+17. **Animated logo.** Draw the icon as SVG and add the CSS animations (section 13.3).
 
 ## 16. Running and debugging
 
@@ -456,9 +568,12 @@ npm test                         # runs everything
 npm test -- wiley                # runs only test files whose name contains "wiley"
 ```
 
-`tests/run.mjs` runs four groups and prints every failure with what was expected and what was found:
+`tests/run.mjs` runs five groups and prints every failure with what was expected and what was found:
 
-1. **APA 7 unit tests** in plain Node: 2 and 21+ authors, particles and hyphens, group authors, journal articles with italics, article numbers, web pages with full dates, no author, no date, and in-text citations.
+1. **Unit tests** in plain Node:
+   - APA 7: 2 and 21+ authors, particles and hyphens, group authors, journal articles with italics, article numbers, web pages with full dates, no author, no date, and in-text citations.
+   - Other styles: an article in MLA, Chicago, Harvard, IEEE and Vancouver, in-text citations, BibTeX keys and escaping, RIS fields, web pages with no author, and a hand-edited APA reference.
+   - Links: DOIs (plain, `doi:`, `doi.org`, URL-encoded), arXiv IDs and links, publisher links with a DOI, PDF links, bare domains and text that isn't a link.
 2. **Web pages.**
    - `tests/fixtures/web/*.html` are copies of real publisher page layouts: ScienceDirect, Springer/Nature, Wiley, IEEE Xplore, MDPI, PubMed, PubMed Central, arXiv HTML, Taylor & Francis, ResearchGate (with and without an abstract block), a Medium-style blog, a WordPress blog, a news site, a single-page app that renders late, a page with a hidden "Abstract" tab, and a page with nothing to find.
    - Each page is opened in Chromium and `extractPage()` is run on it.
@@ -469,6 +584,11 @@ npm test -- wiley                # runs only test files whose name contains "wil
 4. **The popup, end to end.**
    - The extension is loaded into Chromium and the popup is pointed at a page.
    - The test checks that the abstract comes from the page and the conclusion comes from the page or from its linked PDF (ResearchGate).
+   - It also checks the logo, switches the style to IEEE, ticks a section, saves, and checks what was stored.
+5. **The library.**
+   - Three papers are put in storage. The test checks the section counts, the section filter, IEEE numbering, BibTeX cards and MLA order.
+   - It downloads `.bib`, `.ris` and `.md` files and checks their contents, including notes grouped by section.
+   - It toggles a section chip, makes a new section, adds a web page and a PDF by link into it, and checks that text that isn't a link shows an error.
 
 **Expectations.** Each `expected.json` lists, per file, the DOI, title and year, and for the abstract and conclusion:
 - `starts`: the text it must start with;
@@ -505,7 +625,7 @@ Before each release, also try a few live pages by hand: Nature or Springer, Scie
 
 **Ideas**
 - A sentence-case button that lowercases words except acronyms and words after a colon.
-- More citation styles (MLA, Chicago, Harvard) and BibTeX/RIS export for Zotero, Mendeley and EndNote.
-- Tags or folders per project.
+- More citation styles through CSL (the format Zotero uses), and a style per section.
+- Reading notes per section written as a draft paragraph outline.
 - Open-access links through the Unpaywall API, and retraction warnings.
 - Sync between computers with `chrome.storage.sync` (it has small size limits, so only the references could be synced).

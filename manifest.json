@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Lilotech",
-  "version": "1.1.1",
-  "description": "Save APA 7 references, abstracts, conclusions and highlights from the papers and articles you read.",
+  "version": "1.2.0",
+  "description": "Save references in APA, MLA, IEEE, BibTeX and more, plus abstracts and conclusions, sorted into sections.",
   "permissions": [
     "activeTab",
     "scripting",
